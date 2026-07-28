@@ -1,8 +1,10 @@
-<div align="center">
+# 🏠 CENT Family Bot
 
-# 🏠 YoungHill Family Bot
+<p align="center">
+  <img src="assets/cent.png" width="250" alt="CENT Family Logo" />
+</p>
 
-**Многофункциональный Discord-бот для управления семьёй**
+**Многофункциональный Discord-бот для управления семьёй CENT**
 
 [![Python](https://img.shields.io/badge/Python-3.10+-blue?style=flat-square&logo=python&logoColor=white)](https://python.org)
 [![discord.py](https://img.shields.io/badge/discord.py-2.4+-7289DA?style=flat-square&logo=discord&logoColor=white)](https://discordpy.readthedocs.io)
@@ -138,6 +140,6 @@ Fam_bot/
 
 <div align="center">
 
-**Сделано с ❤️ для семьи YoungHill**
+**Сделано с ❤️ для семьи CENT**
 
 </div>

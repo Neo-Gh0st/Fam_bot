@@ -33,7 +33,7 @@ ROLE_ORDER = [
     RoleInfo('YoungWarrior', 1509888639973326899, '⚔️'),
     RoleInfo('YoungHooligan', 1509888026397114499, '🔥'),
     RoleInfo('Young Junior', 1509909783527030784, '⭐'),
-    RoleInfo('YoungHill', 1509884678839079033, '🌿', True),
+    RoleInfo('CENT', 1509884678839079033, '🌿', True),
 ]
 
 RECRUIT_ROLE_ID = 1518186204493906060
@@ -256,7 +256,7 @@ class RecruitView(discord.ui.View):
 # --------------- Заявка в семью (тикеты + кнопки решения) ---------------
 
 YOUNG_JUNIOR_ROLE_ID = 1509909783527030784
-YOUNGHILL_ROLE_ID = 1509884678839079033
+CENT_ROLE_ID = 1509884678839079033
 GUEST_ROLE_ID = 1504073438929883157
 
 # Хранилище собранных данных заявки по user_id
@@ -285,7 +285,7 @@ class FamilyAppDecisionView(discord.ui.View):
 
         guild = interaction.guild
         applicant = guild.get_member(self.applicant_id)
-        roles_to_add = [r for r in (guild.get_role(YOUNG_JUNIOR_ROLE_ID), guild.get_role(YOUNGHILL_ROLE_ID)) if r is not None]
+        roles_to_add = [r for r in (guild.get_role(YOUNG_JUNIOR_ROLE_ID), guild.get_role(CENT_ROLE_ID)) if r is not None]
         if applicant and roles_to_add:
             try:
                 await applicant.add_roles(*roles_to_add, reason=f'Заявка принята {interaction.user}')
@@ -518,7 +518,7 @@ async def _delete_ticket_after(channel: discord.abc.GuildChannel, delay: int) ->
 
 
 class AppModalPartTwo(discord.ui.Modal, title='Заявка: Часть 2'):
-    q1 = discord.ui.TextInput(label='Готовы сменить фамилию на YoungHill?', placeholder='Да/Нет', style=discord.TextStyle.short)
+    q1 = discord.ui.TextInput(label='Готовы сменить фамилию на CENT?', placeholder='Да/Нет', style=discord.TextStyle.short)
     q2 = discord.ui.TextInput(label='Готовы соблюдать правила семьи?', placeholder='Да/Нет', style=discord.TextStyle.short)
     q3 = discord.ui.TextInput(label='Прайм тайм (1. вечер, 2. день, 3. всегда)', placeholder='Например: 1', style=discord.TextStyle.short)
 
@@ -923,7 +923,7 @@ class AdminPanelView(discord.ui.View):
             timestamp=discord.utils.utcnow(),
         )
         dm_embed.set_thumbnail(url=THUMBNAIL_URL)
-        dm_embed.set_footer(text='YoungHill — Собрание')
+        dm_embed.set_footer(text='CENT — Собрание')
 
         sent = 0
         failed = 0
@@ -983,7 +983,7 @@ class AdminPanelView(discord.ui.View):
             timestamp=discord.utils.utcnow(),
         )
         sms_embed.set_thumbnail(url=THUMBNAIL_URL)
-        sms_embed.set_footer(text='YoungHill — Собрание')
+        sms_embed.set_footer(text='CENT — Собрание')
 
         sent = 0
         failed = 0
@@ -1620,7 +1620,7 @@ async def auto_birthday_greeting() -> None:
                         timestamp=discord.utils.utcnow(),
                     )
                     embed.set_thumbnail(url=member.display_avatar.url)
-                    embed.set_footer(text='С любовью, YoungHill Family 💛')
+                    embed.set_footer(text='С любовью, CENT Family 💛')
 
                     try:
                         await channel.send(content=member.mention, embed=embed)
@@ -2107,7 +2107,7 @@ async def send_welcome_message(member: discord.Member) -> None:
         embed.set_image(url=WELCOME_IMAGE_URL)
         embed.set_thumbnail(url=member.display_avatar.url if member.display_avatar else None)
         embed.timestamp = discord.utils.utcnow()
-        embed.set_footer(text='YoungHill')
+        embed.set_footer(text='CENT')
 
         # Пингуем участника отдельным сообщением
         await channel.send(

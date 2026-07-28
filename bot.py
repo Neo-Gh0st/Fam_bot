@@ -535,15 +535,19 @@ class AppModalPartTwo(discord.ui.Modal, title='Заявка: Часть 2'):
         embed.add_field(name='Смена фамилии:', value=self.q1.value, inline=False)
         embed.add_field(name='Соблюдение правил:', value=self.q2.value, inline=False)
         embed.add_field(name='Прайм тайм:', value=self.q3.value, inline=False)
-        await interaction.response.send_message(embed=embed)
+        await interaction.channel.send(embed=embed)
 
-        await interaction.channel.send(
-            f"{interaction.user.mention}, отлично! Теперь **прикрепите в этот чат два скриншота**:\n"
-            f"1. Скриншот вашего паспорта в игре.\n"
-            f"2. Скриншот меню персонажа F10.\n\n"
-            f"После отправки скриншотов нажмите кнопку ниже:",
-            view=TicketFinalStageView(interaction.user.id)
+        step3_embed = discord.Embed(
+            title='✅ Шаг 2 сохранён',
+            description=f"{interaction.user.mention}, отлично! Теперь **прикрепите в этот чат два скриншота**:\n"
+                        f"1. Скриншот вашего паспорта в игре.\n"
+                        f"2. Скриншот меню персонажа F10.\n\n"
+                        f"После отправки скриншотов нажмите кнопку ниже:",
+            color=0xE67E22,
         )
+        step3_embed.set_footer(text='Форма заявки')
+        view = TicketFinalStageView(interaction.user.id)
+        await interaction.response.send_message(embed=step3_embed, view=view, ephemeral=True)
 
 
 class TicketStageTwoView(discord.ui.View):
@@ -551,12 +555,15 @@ class TicketStageTwoView(discord.ui.View):
         super().__init__(timeout=None)
         self.applicant_id = applicant_id
 
-    @discord.ui.button(label='Заполнить Часть 2', style=discord.ButtonStyle.primary, custom_id='app_stage_two', emoji='📝')
+    @discord.ui.button(label='Шаг 2 — продолжить', style=discord.ButtonStyle.success, emoji='➡️', custom_id='app_stage_two')
     async def next_stage(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(AppModalPartTwo())
         for child in self.children:
             child.disabled = True
-        await interaction.message.edit(view=self)
+        try:
+            await interaction.message.edit(view=self)
+        except Exception:
+            pass
 
 
 class AppModalPartOne(discord.ui.Modal, title='Заявка: Часть 1'):
@@ -582,12 +589,17 @@ class AppModalPartOne(discord.ui.Modal, title='Заявка: Часть 1'):
         embed.add_field(name='Возраст:', value=self.q3.value, inline=False)
         embed.add_field(name='Почему к нам:', value=self.q4.value, inline=False)
         embed.add_field(name='Знания РП:', value=self.q5.value, inline=False)
-        await interaction.response.send_message(embed=embed)
+        await interaction.channel.send(embed=embed)
 
-        await interaction.channel.send(
-            'Отлично! Нажмите кнопку ниже, чтобы заполнить вторую часть:',
-            view=TicketStageTwoView(interaction.user.id)
+        step2_embed = discord.Embed(
+            title='✅ Шаг 1 сохранён',
+            description='Нажми на кнопку ниже, чтобы перейти к заполнению **шага 2**.',
+            color=0xE67E22,
         )
+        step2_embed.set_footer(text='Форма заявки')
+
+        view = TicketStageTwoView(interaction.user.id)
+        await interaction.response.send_message(embed=step2_embed, view=view, ephemeral=True)
 
 
 class TicketStageOneView(discord.ui.View):
@@ -595,12 +607,15 @@ class TicketStageOneView(discord.ui.View):
         super().__init__(timeout=None)
         self.applicant_id = applicant_id
 
-    @discord.ui.button(label='Заполнить Часть 1', style=discord.ButtonStyle.primary, custom_id='app_stage_one', emoji='📝')
+    @discord.ui.button(label='Шаг 1 — заполнить', style=discord.ButtonStyle.primary, custom_id='app_stage_one', emoji='📝')
     async def next_stage(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(AppModalPartOne())
         for child in self.children:
             child.disabled = True
-        await interaction.message.edit(view=self)
+        try:
+            await interaction.message.edit(view=self)
+        except Exception:
+            pass
 
 
 class ApplicationCreateView(discord.ui.View):

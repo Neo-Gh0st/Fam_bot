@@ -387,134 +387,27 @@ class FamilyAppDecisionView(discord.ui.View):
         ))
 
 
+# TicketAdminView оставлен как заглушка для совместимости с Discord custom_id кэшем
 class TicketAdminView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
     @discord.ui.button(label='Закрыть тикет', style=discord.ButtonStyle.danger, custom_id='app_close_ticket', emoji='🔒')
     async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not interaction.user.guild_permissions.manage_channels:
-            await interaction.response.send_message('У вас нет прав закрывать тикет.', ephemeral=True)
-            return
-        await interaction.response.send_message('Тикет будет удален через 5 секунд...')
-        await asyncio.sleep(5)
-        try:
-            await interaction.channel.delete()
-        except Exception:
-            pass
+        await interaction.response.send_message('Эта функция больше не используется.', ephemeral=True)
 
 
+# TicketFinalStageView оставлен как заглушка для совместимости с Discord custom_id кэшем
 class TicketFinalStageView(discord.ui.View):
-    def __init__(self, applicant_id: int):
+    def __init__(self, applicant_id: int = 0):
         super().__init__(timeout=None)
         self.applicant_id = applicant_id
 
     @discord.ui.button(label='Завершить заявку', style=discord.ButtonStyle.success, custom_id='app_stage_final', emoji='✅')
     async def finish_app(self, interaction: discord.Interaction, button: discord.ui.Button):
-        import io
-        data = family_applications.get(self.applicant_id, {})
-
-        # Собираем скриншоты из сообщений тикета (до 2 штук)
-        attachments: list[discord.Attachment] = []
-        try:
-            async for msg in interaction.channel.history(limit=50, oldest_first=False):
-                for att in msg.attachments:
-                    if att.content_type and att.content_type.startswith('image'):
-                        attachments.append(att)
-                if len(attachments) >= 2:
-                    break
-        except Exception:
-            pass
-
-        await interaction.response.send_message(
-            'Ваша заявка будет рассмотрена в течение от 1 часа до 1 дня.'
-        )
-        for child in self.children:
-            child.disabled = True
-        await interaction.message.edit(view=self)
-
-        # Строим итоговый embed с кнопками решения
-        embed = discord.Embed(title='📋 Заявка в семью', color=0xF59E0B)
-        embed.set_thumbnail(url=THUMBNAIL_URL)
-        applicant = interaction.guild.get_member(self.applicant_id)
-        embed.add_field(name='Участник', value=_log_user_field(applicant) if applicant else f'<@{self.applicant_id}>', inline=False)
-
-        # Часть 1
-        embed.add_field(name='Имя Фамилия', value=data.get('name', '—'), inline=True)
-        embed.add_field(name='Уровень', value=data.get('level', '—'), inline=True)
-        embed.add_field(name='Возраст (ООС)', value=data.get('age', '—'), inline=True)
-        embed.add_field(name='Почему к нам', value=data.get('why', '—'), inline=False)
-        embed.add_field(name='Знания РП', value=data.get('rp', '—'), inline=True)
-
-        # Часть 2
-        embed.add_field(name='Смена фамилии', value=data.get('surname', '—'), inline=True)
-        embed.add_field(name='Правила', value=data.get('rules', '—'), inline=True)
-        embed.add_field(name='Прайм тайм', value=data.get('prime', '—'), inline=True)
-
-        embed.add_field(name='Скриншоты', value=f'прикреплены к сообщению ({len(attachments)} шт.)' if attachments else 'не прикреплены', inline=False)
-        embed.timestamp = discord.utils.utcnow()
-        embed.set_footer(text='Ожидает рассмотрения')
-
-        # Постим в канал заявок: embed + кнопки + файлы скриншотов
-        if APP_LOG_CHANNEL_ID:
-            try:
-                log_channel = bot.get_channel(APP_LOG_CHANNEL_ID)
-                if log_channel is None:
-                    log_channel = await bot.fetch_channel(APP_LOG_CHANNEL_ID)
-                if isinstance(log_channel, discord.TextChannel):
-                    files: list[discord.File] = []
-                    for att in attachments:
-                        try:
-                            fp = await att.to_file()
-                            files.append(fp)
-                        except Exception as exc:
-                            print(f'Failed to download attachment: {exc}')
-
-                    if files:
-                        # Картинка в embed — первая, чтобы был превью
-                        embed.set_image(url=f'attachment://{files[0].filename}')
-                        await log_channel.send(embed=embed, view=FamilyAppDecisionView(self.applicant_id), files=files)
-                    else:
-                        await log_channel.send(embed=embed, view=FamilyAppDecisionView(self.applicant_id))
-            except Exception as exc:
-                print(f'Failed to post family app decision: {exc}')
-
-        await interaction.channel.send(
-            embed=discord.Embed(description='⏳ Тикет будет автоматически удалён через **5 минут**.', color=0xF59E0B),
-        )
-        await interaction.channel.send(
-            embed=discord.Embed(description='Панель управления тикетом (только для администрации):', color=0x374151),
-            view=TicketAdminView()
-        )
-
-        # Чистим хранилище
-        family_applications.pop(self.applicant_id, None)
-
-        asyncio.create_task(send_log(
-            '📋 Заявка в семью подана',
-            fields=[
-                ('Участник', _log_user_field(applicant) if applicant else f'<@{self.applicant_id}>', True),
-                ('Тикет', f'[перейти]({interaction.channel.jump_url})', True),
-            ],
-            color=0xF59E0B, user=applicant,
-        ))
-
-        # Автоудаление тикета через 5 минут
-        ticket_channel = interaction.channel
-        asyncio.create_task(_delete_ticket_after(ticket_channel, 5 * 60))
+        await interaction.response.send_message('Эта функция больше не используется.', ephemeral=True)
 
 
-async def _delete_ticket_after(channel: discord.abc.GuildChannel, delay: int) -> None:
-    """Удаляет тикет через delay секунд, предупреждая в чате."""
-    try:
-        await asyncio.sleep(delay)
-        await channel.send(embed=discord.Embed(description='🗑️ Удаление тикета...', color=0xEF4444))
-        await asyncio.sleep(3)
-        await channel.delete(reason='Автоудаление после завершения заявки')
-    except (discord.NotFound, discord.Forbidden):
-        pass
-    except Exception as exc:
-        print(f'Ticket auto-delete failed: {exc}')
 
 
 class AppModalPartTwo(discord.ui.Modal, title='Заявка: Часть 2'):

@@ -2080,7 +2080,7 @@ async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent) -> Non
 
 
 async def send_welcome_message(member: discord.Member) -> None:
-    """Send a welcome embed to the welcome channel."""
+    """Send a member join notification for senior staff with member details and CENT image."""
     print(f'[WELCOME] Triggered for {member} ({member.id})')
     if not WELCOME_CHANNEL_ID:
         print(f'[WELCOME] No WELCOME_CHANNEL_ID set')
@@ -2096,24 +2096,28 @@ async def send_welcome_message(member: discord.Member) -> None:
             return
 
         embed = discord.Embed(
-            title=f'{member.display_name}, Добро пожаловать!',
+            title='📥 Новый участник зашёл на сервер',
             description=(
-                f'📋 Ознакомься с <#1342073128112623667>\n'
-                f'📩 Подавай <#1346126083363307651>\n\n'
-                f'🎙️ И ждем тебя в войсе!'
+                f'1. **Тег:** {member.mention}\n'
+                f'2. **Ник:** `{member.name}`\n'
+                f'3. **ID:** `{member.id}`'
             ),
-            color=0xF59E0B,
+            color=0x3B82F6,
+            timestamp=discord.utils.utcnow(),
         )
-        embed.set_image(url=WELCOME_IMAGE_URL)
         embed.set_thumbnail(url=member.display_avatar.url if member.display_avatar else None)
-        embed.timestamp = discord.utils.utcnow()
-        embed.set_footer(text='CENT')
+        embed.set_footer(text='CENT — Уведомление для Старшего Состава 👑')
 
-        # Пингуем участника отдельным сообщением
-        await channel.send(
-            embed=embed,
-            allowed_mentions=discord.AllowedMentions(users=True),
-        )
+        if CENT_IMAGE_FILE.is_file():
+            file = discord.File(CENT_IMAGE_FILE, filename='cent.png')
+            embed.set_image(url='attachment://cent.png')
+            await channel.send(embed=embed, file=file)
+        elif WELCOME_IMAGE_URL:
+            embed.set_image(url=WELCOME_IMAGE_URL)
+            await channel.send(embed=embed)
+        else:
+            await channel.send(embed=embed)
+
         print(f'[WELCOME] Message sent successfully')
     except Exception as exc:
         print(f'[WELCOME ERROR] {type(exc).__name__}: {exc}')

@@ -7,7 +7,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10+-blue?style=flat-square&logo=python&logoColor=white)](https://python.org)
 [![discord.py](https://img.shields.io/badge/discord.py-2.4+-7289DA?style=flat-square&logo=discord&logoColor=white)](https://discordpy.readthedocs.io)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
-[![Status](https://img.shields.io/badge/Status-Active-brightgreen?style=flat-square)](https://github.com/zaca14325/Fam_bot)
+[![Status](https://img.shields.io/badge/Status-Active-brightgreen?style=flat-square)](https://github.com/Neo-Gh0st/Fam_bot)
 
 ---
 
@@ -36,7 +36,7 @@
 ### 1. Клонируйте репозиторий
 
 ```bash
-git clone https://github.com/zaca14325/Fam_bot.git
+git clone https://github.com/Neo-Gh0st/Fam_bot.git
 cd Fam_bot
 ```
 
@@ -132,7 +132,7 @@ Fam_bot/
 ## 📞 Контакты
 
 - **Discord**: zaca14325
-- **GitHub**: [@zaca14325](https://github.com/zaca14325)
+- **GitHub**: [@Neo-Gh0st](https://github.com/Neo-Gh0st)
 
 ---
 

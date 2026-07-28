@@ -531,23 +531,60 @@ class AppModalPartTwo(discord.ui.Modal, title='Заявка: Часть 2'):
             'prime': self.q3.value,
         })
 
-        embed = discord.Embed(title='Ответы (Часть 2)', color=0x3B82F6)
-        embed.add_field(name='Смена фамилии:', value=self.q1.value, inline=False)
-        embed.add_field(name='Соблюдение правил:', value=self.q2.value, inline=False)
-        embed.add_field(name='Прайм тайм:', value=self.q3.value, inline=False)
-        await interaction.channel.send(embed=embed)
+        data = family_applications.get(interaction.user.id, {})
+        app_type = data.get('type', 'Ticket')
 
-        step3_embed = discord.Embed(
-            title='✅ Шаг 2 сохранён',
-            description=f"{interaction.user.mention}, отлично! Теперь **прикрепите в этот чат два скриншота**:\n"
-                        f"1. Скриншот вашего паспорта в игре.\n"
-                        f"2. Скриншот меню персонажа F10.\n\n"
-                        f"После отправки скриншотов нажмите кнопку ниже:",
-            color=0xE67E22,
+        # Формируем итоговую заявку для администрации
+        admin_embed = discord.Embed(
+            title=f'📋 Новая заявка в семью CENT ({app_type})',
+            color=0x3B82F6,
+            timestamp=discord.utils.utcnow(),
         )
-        step3_embed.set_footer(text='Форма заявки')
-        view = TicketFinalStageView(interaction.user.id)
-        await interaction.response.send_message(embed=step3_embed, view=view, ephemeral=True)
+        admin_embed.set_author(
+            name=f'{interaction.user.display_name} ({interaction.user.name})',
+            icon_url=interaction.user.display_avatar.url if interaction.user.display_avatar else None,
+        )
+        admin_embed.add_field(name='Участник', value=interaction.user.mention, inline=True)
+        admin_embed.add_field(name='Тип заявки', value=f'**{app_type}**', inline=True)
+        admin_embed.add_field(name='Имя Фамилия (IC)', value=data.get('name', '—'), inline=True)
+        admin_embed.add_field(name='Уровень в игре', value=data.get('level', '—'), inline=True)
+        admin_embed.add_field(name='Возраст (OOC)', value=data.get('age', '—'), inline=True)
+        admin_embed.add_field(name='Знания РП', value=data.get('rp', '—'), inline=True)
+        admin_embed.add_field(name='Почему к нам', value=data.get('why', '—'), inline=False)
+        admin_embed.add_field(name='Смена фамилии', value=data.get('surname', '—'), inline=True)
+        admin_embed.add_field(name='Соблюдение правил', value=data.get('rules', '—'), inline=True)
+        admin_embed.add_field(name='Прайм тайм', value=data.get('prime', '—'), inline=True)
+        admin_embed.set_footer(text=f'ID: {interaction.user.id}')
+
+        # Отправляем в канал заявок администрации
+        target_channel_id = APP_LOG_CHANNEL_ID or RECRUIT_APP_LIST_CHANNEL_ID or LOG_CHANNEL_ID
+        if target_channel_id:
+            try:
+                log_chan = bot.get_channel(target_channel_id)
+                if log_chan is None:
+                    log_chan = await bot.fetch_channel(target_channel_id)
+                if isinstance(log_chan, discord.TextChannel):
+                    await log_chan.send(embed=admin_embed, view=FamilyAppDecisionView(interaction.user.id))
+            except Exception as exc:
+                print(f'[APP LOG ERROR] {exc}')
+
+        asyncio.create_task(send_log(
+            '📋 Заявка в семью подана',
+            fields=[
+                ('Участник', _log_user_field(interaction.user), True),
+                ('Тип заявки', app_type, True),
+            ],
+            color=0x22C55E, user=interaction.user,
+        ))
+
+        # Финальная карточка подтверждения пользователю
+        final_embed = discord.Embed(
+            title='✅ Заявка отправлена!',
+            description='Ваша заявка успешно заполнена и передана администрации семьи **CENT**.\nОжидайте ответа!',
+            color=0x22C55E,
+        )
+        final_embed.set_footer(text='Форма заявки')
+        await interaction.response.send_message(embed=final_embed, ephemeral=True)
 
 
 class TicketStageTwoView(discord.ui.View):
@@ -558,12 +595,6 @@ class TicketStageTwoView(discord.ui.View):
     @discord.ui.button(label='Шаг 2 — продолжить', style=discord.ButtonStyle.success, emoji='➡️', custom_id='app_stage_two')
     async def next_stage(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(AppModalPartTwo())
-        for child in self.children:
-            child.disabled = True
-        try:
-            await interaction.message.edit(view=self)
-        except Exception:
-            pass
 
 
 class AppModalPartOne(discord.ui.Modal, title='Заявка: Часть 1'):
@@ -573,23 +604,20 @@ class AppModalPartOne(discord.ui.Modal, title='Заявка: Часть 1'):
     q4 = discord.ui.TextInput(label='Как узнали о семье и почему к нам?', placeholder='Ваш ответ...', style=discord.TextStyle.paragraph)
     q5 = discord.ui.TextInput(label='Знания РП (от 0 до 10)', placeholder='Например: 8', style=discord.TextStyle.short)
 
+    def __init__(self, app_type: str = 'Ticket'):
+        super().__init__()
+        self.app_type = app_type
+
     async def on_submit(self, interaction: discord.Interaction):
         # Сохраняем ответы
         family_applications[interaction.user.id] = {
+            'type': self.app_type,
             'name': self.q1.value,
             'level': self.q2.value,
             'age': self.q3.value,
             'why': self.q4.value,
             'rp': self.q5.value,
         }
-
-        embed = discord.Embed(title='Ответы (Часть 1)', color=0x3B82F6)
-        embed.add_field(name='Имя Фамилия:', value=self.q1.value, inline=False)
-        embed.add_field(name='Уровень:', value=self.q2.value, inline=False)
-        embed.add_field(name='Возраст:', value=self.q3.value, inline=False)
-        embed.add_field(name='Почему к нам:', value=self.q4.value, inline=False)
-        embed.add_field(name='Знания РП:', value=self.q5.value, inline=False)
-        await interaction.channel.send(embed=embed)
 
         step2_embed = discord.Embed(
             title='✅ Шаг 1 сохранён',
@@ -602,85 +630,17 @@ class AppModalPartOne(discord.ui.Modal, title='Заявка: Часть 1'):
         await interaction.response.send_message(embed=step2_embed, view=view, ephemeral=True)
 
 
-class TicketStageOneView(discord.ui.View):
-    def __init__(self, applicant_id: int):
-        super().__init__(timeout=None)
-        self.applicant_id = applicant_id
-
-    @discord.ui.button(label='Шаг 1 — заполнить', style=discord.ButtonStyle.primary, custom_id='app_stage_one', emoji='📝')
-    async def next_stage(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(AppModalPartOne())
-        for child in self.children:
-            child.disabled = True
-        try:
-            await interaction.message.edit(view=self)
-        except Exception:
-            pass
-
-
 class ApplicationCreateView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
     @discord.ui.button(label='Ticket', style=discord.ButtonStyle.primary, emoji='🤝', custom_id='app_create_ticket')
     async def create_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
-        guild = interaction.guild
-        category = guild.get_channel(APP_CATEGORY_ID) if APP_CATEGORY_ID else None
-
-        overwrites = {
-            guild.default_role: discord.PermissionOverwrite(read_messages=False),
-            interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True, attach_files=True),
-            guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True, manage_channels=True)
-        }
-
-        try:
-            await interaction.response.defer(ephemeral=True)
-            ticket_channel = await guild.create_text_channel(
-                name=f'заявка-{interaction.user.name}',
-                category=category,
-                overwrites=overwrites
-            )
-        except Exception as exc:
-            await interaction.followup.send(f'Ошибка создания тикета: {exc}', ephemeral=True)
-            return
-
-        await ticket_channel.send(
-            f"Привет, {interaction.user.mention}! Добро пожаловать на собеседование в семью CENT.\n"
-            f"Нажмите кнопку ниже, чтобы начать заполнение заявки.",
-            view=TicketStageOneView(interaction.user.id)
-        )
-
-        await interaction.followup.send(f'Тикет создан! Перейдите в канал {ticket_channel.mention}', ephemeral=True)
+        await interaction.response.send_modal(AppModalPartOne(app_type='Ticket'))
 
     @discord.ui.button(label='VZP', style=discord.ButtonStyle.secondary, emoji='🔫', custom_id='app_create_vzp')
     async def create_vzp_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
-        guild = interaction.guild
-        category = guild.get_channel(APP_CATEGORY_ID) if APP_CATEGORY_ID else None
-
-        overwrites = {
-            guild.default_role: discord.PermissionOverwrite(read_messages=False),
-            interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True, attach_files=True),
-            guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True, manage_channels=True)
-        }
-
-        try:
-            await interaction.response.defer(ephemeral=True)
-            ticket_channel = await guild.create_text_channel(
-                name=f'взп-{interaction.user.name}',
-                category=category,
-                overwrites=overwrites
-            )
-        except Exception as exc:
-            await interaction.followup.send(f'Ошибка создания тикета VZP: {exc}', ephemeral=True)
-            return
-
-        await ticket_channel.send(
-            f"Привет, {interaction.user.mention}! Добро пожаловать на собеседование VZP семьи CENT.\n"
-            f"Нажмите кнопку ниже, чтобы начать заполнение заявки.",
-            view=TicketStageOneView(interaction.user.id)
-        )
-
-        await interaction.followup.send(f'Тикет VZP создан! Перейдите в канал {ticket_channel.mention}', ephemeral=True)
+        await interaction.response.send_modal(AppModalPartOne(app_type='VZP'))
 
 # --------------- Заявка в рекруты ---------------
 

@@ -41,6 +41,8 @@ THUMBNAIL_URL = 'https://media.discordapp.net/attachments/1509878666782445678/15
 MAIN_IMAGE_URL = 'https://cdn.discordapp.com/attachments/1346126083363307651/1346128287000297563/YOUNGHILL-03-03-2025.gif?ex=6a43d3a9&is=6a428229&hm=8f89a624939d58b8ac6505a6bb4c5ee1b3430fae2e9b99e5bd0333a54ccf306c&'
 WELCOME_IMAGE_URL = 'https://cdn.discordapp.com/attachments/1342073128112623666/1520871241353793608/welcome.png?ex=6a456838&is=6a4416b8&hm=07c5a8cf2126711faa146c83bdf3e11e7abf207939280eeb6ec9f9b743721301&'
 STATE_FILE = Path(__file__).with_name('board-state.json')
+IMAGE_STATE_FILE = Path(__file__).with_name('bot-image-state.json')
+CENT_IMAGE_FILE = Path(__file__).parent / 'assets' / 'cent.png'
 RECRUIT_STATE_FILE = Path(__file__).with_name('recruit-state.json')
 REPORT_BUTTON_STATE_FILE = Path(__file__).with_name('report-button-state.json')
 BIRTHDAY_STATE_FILE = Path(__file__).with_name('birthday-state.json')
@@ -49,6 +51,15 @@ APP_STATE_FILE = Path(__file__).with_name('app-state.json')
 RECRUIT_APP_STATE_FILE = Path(__file__).with_name('recruit-app-state.json')
 STATS_STATE_FILE = Path(__file__).with_name('stats-state.json')
 REMINDERS_STATE_FILE = Path(__file__).with_name('reminders-state.json')
+VERIFICATION_STATE_FILE = Path(__file__).with_name('verification-state.json')
+try:
+    BOT_IMAGE_URL = json.loads(IMAGE_STATE_FILE.read_text(encoding='utf-8')).get('url')
+except (OSError, ValueError, AttributeError):
+    BOT_IMAGE_URL = None
+
+THUMBNAIL_URL = BOT_IMAGE_URL
+MAIN_IMAGE_URL = BOT_IMAGE_URL
+WELCOME_IMAGE_URL = BOT_IMAGE_URL
 ADMIN_PANEL_CHANNEL_ID = int(os.getenv('ADMIN_PANEL_CHANNEL_ID', '1523819460538925086'))
 MEETING_ROLE_ID = int(os.getenv('MEETING_ROLE_ID', '1509884678839079033'))
 MEETING_VOICE_CHANNEL_ID = int(os.getenv('MEETING_VOICE_CHANNEL_ID', '1342078486419869762'))
@@ -83,6 +94,8 @@ APP_LOG_CHANNEL_ID = int(os.getenv('APP_LOG_CHANNEL_ID', '0'))
 APP_CATEGORY_ID = int(os.getenv('APP_CATEGORY_ID', '0'))
 RECRUIT_APP_BANNER_CHANNEL_ID = int(os.getenv('RECRUIT_APP_BANNER_CHANNEL_ID', '0'))
 RECRUIT_APP_LIST_CHANNEL_ID = int(os.getenv('RECRUIT_APP_LIST_CHANNEL_ID', '0'))
+VERIFICATION_ROLE_ID = int(os.getenv('VERIFICATION_ROLE_ID', '1531246359674487039'))
+VERIFICATION_EMOJI = os.getenv('VERIFICATION_EMOJI', '✅')
 
 if not BOT_TOKEN:
     raise SystemExit('Please set BOT_TOKEN in your .env file.')
@@ -92,6 +105,7 @@ intents.guilds = True
 intents.members = True
 intents.message_content = True
 intents.voice_states = True
+intents.reactions = True
 
 class RefreshView(discord.ui.View):
     def __init__(self) -> None:
@@ -1109,6 +1123,12 @@ def read_json(path: Path) -> dict:
 def write_json(path: Path, data: dict) -> None:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
 
+def read_verification_state() -> dict:
+    return read_json(VERIFICATION_STATE_FILE)
+
+def write_verification_state(data: dict) -> None:
+    write_json(VERIFICATION_STATE_FILE, data)
+
 def read_state() -> dict:
     return read_json(STATE_FILE)
 
@@ -1979,6 +1999,86 @@ async def on_message(message: discord.Message) -> None:
     await bot.process_commands(message)
 
 
+@bot.event
+async def on_raw_reaction_add(payload: discord.RawReactionActionEvent) -> None:
+    """Give the verification role after a user reacts to the configured message."""
+    if payload.guild_id is None or bot.user is None or payload.user_id == bot.user.id:
+        return
+
+    state = read_verification_state()
+    if (
+        payload.guild_id != state.get('guild_id')
+        or payload.channel_id != state.get('channel_id')
+        or payload.message_id != state.get('message_id')
+        or str(payload.emoji) != VERIFICATION_EMOJI
+    ):
+        return
+
+    guild = bot.get_guild(payload.guild_id)
+    if guild is None:
+        return
+
+    role = guild.get_role(VERIFICATION_ROLE_ID)
+    if role is None:
+        print('[VERIFY] Verification role was not found. Check VERIFICATION_ROLE_ID.')
+        return
+
+    try:
+        member = payload.member or guild.get_member(payload.user_id)
+        if member is None:
+            member = await guild.fetch_member(payload.user_id)
+        if member.bot or role in member.roles:
+            return
+        if guild.me is None or role >= guild.me.top_role:
+            print('[VERIFY] Bot role must be above the verification role.')
+            return
+        await member.add_roles(role, reason='Completed verification by reaction')
+    except discord.Forbidden:
+        print('[VERIFY] Missing Manage Roles permission.')
+    except discord.HTTPException as exc:
+        print(f'[VERIFY] Failed to add role: {exc}')
+
+
+@bot.event
+async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent) -> None:
+    """Remove the verification role when its reaction is removed."""
+    if payload.guild_id is None or bot.user is None or payload.user_id == bot.user.id:
+        return
+
+    state = read_verification_state()
+    if (
+        payload.guild_id != state.get('guild_id')
+        or payload.channel_id != state.get('channel_id')
+        or payload.message_id != state.get('message_id')
+        or str(payload.emoji) != VERIFICATION_EMOJI
+    ):
+        return
+
+    print(f'[VERIFY] Reaction removed by user {payload.user_id}.')
+
+    guild = bot.get_guild(payload.guild_id)
+    if guild is None:
+        return
+
+    role = guild.get_role(VERIFICATION_ROLE_ID)
+    if role is None:
+        print('[VERIFY] Verification role was not found. Check VERIFICATION_ROLE_ID.')
+        return
+
+    try:
+        member = guild.get_member(payload.user_id)
+        if member is None:
+            member = await guild.fetch_member(payload.user_id)
+        if member.bot or role not in member.roles:
+            return
+        await member.remove_roles(role, reason='Removed verification reaction')
+        print(f'[VERIFY] Removed role from user {member.id}.')
+    except discord.Forbidden:
+        print('[VERIFY] Missing Manage Roles permission.')
+    except discord.HTTPException as exc:
+        print(f'[VERIFY] Failed to remove role: {exc}')
+
+
 async def send_welcome_message(member: discord.Member) -> None:
     """Send a welcome embed to the welcome channel."""
     print(f'[WELCOME] Triggered for {member} ({member.id})')
@@ -2353,6 +2453,41 @@ async def on_invite_delete(invite: discord.Invite) -> None:
     ))
 
 
+@bot.tree.command(name='set_bot_image', description='Обновить изображения бота')
+@app_commands.default_permissions(manage_guild=True)
+async def set_bot_image(interaction: discord.Interaction) -> None:
+    """Upload the bundled CENT image to Discord and use it in all bot embeds."""
+    if not isinstance(interaction.user, discord.Member) or not interaction.user.guild_permissions.manage_guild:
+        await interaction.response.send_message('Нужны права «Управление сервером».', ephemeral=True)
+        return
+    if not isinstance(interaction.channel, discord.TextChannel):
+        await interaction.response.send_message('Команду нужно использовать в текстовом канале.', ephemeral=True)
+        return
+    if not CENT_IMAGE_FILE.is_file():
+        await interaction.response.send_message('Файл изображения не найден в проекте.', ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True, thinking=True)
+    image_message = await interaction.channel.send(file=discord.File(CENT_IMAGE_FILE, filename='cent.png'))
+    image_url = image_message.attachments[0].url
+    IMAGE_STATE_FILE.write_text(json.dumps({'url': image_url}, ensure_ascii=False), encoding='utf-8')
+
+    global BOT_IMAGE_URL, THUMBNAIL_URL, MAIN_IMAGE_URL, WELCOME_IMAGE_URL
+    BOT_IMAGE_URL = image_url
+    THUMBNAIL_URL = image_url
+    MAIN_IMAGE_URL = image_url
+    WELCOME_IMAGE_URL = image_url
+
+    asyncio.create_task(refresh_board_safely())
+    asyncio.create_task(refresh_recruit_board_safely())
+    asyncio.create_task(refresh_report_button_message_safely())
+    asyncio.create_task(refresh_birthday_board_safely())
+    asyncio.create_task(refresh_application_board_safely())
+    asyncio.create_task(refresh_recruit_app_banner_safely())
+    asyncio.create_task(refresh_admin_panel_safely())
+    await interaction.followup.send('Изображение бота обновлено во всех панелях.', ephemeral=True)
+
+
 @tasks.loop(seconds=AUTO_REFRESH_SECONDS)
 async def auto_refresh() -> None:
     await refresh_board_safely()
@@ -2362,6 +2497,43 @@ async def auto_refresh() -> None:
     await refresh_application_board_safely()
     await refresh_recruit_app_banner_safely()
     await refresh_admin_panel_safely()
+
+
+@bot.tree.command(name='verification_message', description='Отправить сообщение для верификации')
+@app_commands.default_permissions(manage_guild=True)
+async def verification_message(interaction: discord.Interaction) -> None:
+    """Publish a reaction-role verification message in the current text channel."""
+    if not isinstance(interaction.user, discord.Member) or not interaction.user.guild_permissions.manage_guild:
+        await interaction.response.send_message('Нужны права «Управление сервером».', ephemeral=True)
+        return
+    if not isinstance(interaction.channel, discord.TextChannel):
+        await interaction.response.send_message('Команду нужно использовать в текстовом канале.', ephemeral=True)
+        return
+    if not VERIFICATION_ROLE_ID:
+        await interaction.response.send_message('Укажите VERIFICATION_ROLE_ID в .env и перезапустите бота.', ephemeral=True)
+        return
+
+    role = interaction.guild.get_role(VERIFICATION_ROLE_ID) if interaction.guild else None
+    if role is None:
+        await interaction.response.send_message('Роль из VERIFICATION_ROLE_ID не найдена на этом сервере.', ephemeral=True)
+        return
+    if interaction.guild is None or interaction.guild.me is None or role >= interaction.guild.me.top_role:
+        await interaction.response.send_message('Роль бота должна быть выше роли «Верифицирован».', ephemeral=True)
+        return
+
+    embed = discord.Embed(
+        title='Верификация',
+        description=f'Чтобы получить доступ к серверу, нажмите на реакцию {VERIFICATION_EMOJI} ниже.',
+        color=0x5865F2,
+    )
+    message = await interaction.channel.send(embed=embed)
+    await message.add_reaction(VERIFICATION_EMOJI)
+    write_verification_state({
+        'guild_id': interaction.guild_id,
+        'channel_id': interaction.channel_id,
+        'message_id': message.id,
+    })
+    await interaction.response.send_message('Сообщение верификации опубликовано.', ephemeral=True)
 
 @bot.tree.command(name='family', description='Обновить таблицу состава семьи')
 async def family(interaction: discord.Interaction) -> None:

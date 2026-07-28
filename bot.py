@@ -1978,8 +1978,6 @@ async def on_member_join(member: discord.Member) -> None:
         ('Аккаунт создан', f'{account_age} дн. назад', True),
         ('Участников', str(member.guild.member_count), True),
     ]
-    if member.guild.icon:
-        fields.append(('Иконка', f'[Ссылка]({member.guild.icon.url})', True))
 
     asyncio.create_task(send_log(
         '📥 Участник вошёл',

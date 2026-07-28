@@ -607,7 +607,7 @@ class ApplicationCreateView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label='Подать заявку', style=discord.ButtonStyle.success, emoji='📝', custom_id='app_create_ticket')
+    @discord.ui.button(label='Ticket', style=discord.ButtonStyle.primary, emoji='🤝', custom_id='app_create_ticket')
     async def create_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
         guild = interaction.guild
         category = guild.get_channel(APP_CATEGORY_ID) if APP_CATEGORY_ID else None
@@ -630,12 +630,42 @@ class ApplicationCreateView(discord.ui.View):
             return
 
         await ticket_channel.send(
-            f"Привет, {interaction.user.mention}! Добро пожаловать на собеседование.\n"
+            f"Привет, {interaction.user.mention}! Добро пожаловать на собеседование в семью CENT.\n"
             f"Нажмите кнопку ниже, чтобы начать заполнение заявки.",
             view=TicketStageOneView(interaction.user.id)
         )
 
         await interaction.followup.send(f'Тикет создан! Перейдите в канал {ticket_channel.mention}', ephemeral=True)
+
+    @discord.ui.button(label='VZP', style=discord.ButtonStyle.secondary, emoji='🔫', custom_id='app_create_vzp')
+    async def create_vzp_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
+        guild = interaction.guild
+        category = guild.get_channel(APP_CATEGORY_ID) if APP_CATEGORY_ID else None
+
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(read_messages=False),
+            interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True, attach_files=True),
+            guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True, manage_channels=True)
+        }
+
+        try:
+            await interaction.response.defer(ephemeral=True)
+            ticket_channel = await guild.create_text_channel(
+                name=f'взп-{interaction.user.name}',
+                category=category,
+                overwrites=overwrites
+            )
+        except Exception as exc:
+            await interaction.followup.send(f'Ошибка создания тикета VZP: {exc}', ephemeral=True)
+            return
+
+        await ticket_channel.send(
+            f"Привет, {interaction.user.mention}! Добро пожаловать на собеседование VZP семьи CENT.\n"
+            f"Нажмите кнопку ниже, чтобы начать заполнение заявки.",
+            view=TicketStageOneView(interaction.user.id)
+        )
+
+        await interaction.followup.send(f'Тикет VZP создан! Перейдите в канал {ticket_channel.mention}', ephemeral=True)
 
 # --------------- Заявка в рекруты ---------------
 
@@ -1715,16 +1745,18 @@ async def refresh_application_board() -> None:
     state = read_app_state()
 
     embed = discord.Embed(
-        title='📋 Набор в семью',
-        description='Хочешь вступить в семью?\nНажми кнопку **Подать заявку**, чтобы открыть тикет и заполнить анкету.\n\n'
-                    'Твоя заявка будет рассмотрена администрацией.',
-        color=0xF59E0B,
+        title='Вступление в семью CENT',
+        description='Выберите тип заявки:',
+        color=0xE67E22,
     )
-    embed.set_thumbnail(url=THUMBNAIL_URL)
-    embed.set_footer(text='Нажми «Подать заявку», чтобы открыть тикет')
-    embed.timestamp = discord.utils.utcnow()
-
     view = ApplicationCreateView()
+
+    file = None
+    if CENT_IMAGE_FILE.is_file():
+        file = discord.File(CENT_IMAGE_FILE, filename='cent.png')
+        embed.set_image(url='attachment://cent.png')
+    elif BOT_IMAGE_URL:
+        embed.set_image(url=BOT_IMAGE_URL)
 
     msg_id = state.get('message_id')
     message = None
@@ -1744,9 +1776,15 @@ async def refresh_application_board() -> None:
             pass
 
     if message is None:
-        message = await channel.send(embed=embed, view=view)
+        if file:
+            message = await channel.send(embed=embed, file=file, view=view)
+        else:
+            message = await channel.send(embed=embed, view=view)
     else:
-        await message.edit(embed=embed, view=view)
+        if file:
+            message = await message.edit(embed=embed, attachments=[file], view=view)
+        else:
+            message = await message.edit(embed=embed, view=view)
 
     state['message_id'] = message.id
     write_app_state(state)

@@ -1218,27 +1218,28 @@ async def update_invite_cache(guild: discord.Guild) -> dict[str, discord.Invite]
     bot.invite_cache[guild.id] = {code: invite.uses or 0 for code, invite in invites.items()}
     return invites
 
-def get_members_with_role(guild: discord.Guild, role_id: int) -> list[discord.Member]:
+async def get_members_with_role(guild: discord.Guild, role_id: int) -> list[discord.Member]:
     role = guild.get_role(role_id)
     if role is None:
         return []
     if role.members:
-        return role.members
+        return list(role.members)
     return [m for m in guild.members if role in m.roles]
 
 
 async def fetch_all_members(guild: discord.Guild) -> None:
-    if not guild.chunked:
+    if guild.member_count and len(guild.members) < guild.member_count:
         try:
-            await guild.fetch_members(limit=None)
+            async for member in guild.fetch_members(limit=None):
+                pass
         except Exception as exc:
             print(f'Could not fetch members for {guild}: {exc}')
 
 
-def build_payload(guild: discord.Guild) -> tuple[discord.Embed, discord.ui.View]:
+async def build_payload(guild: discord.Guild) -> tuple[discord.Embed, discord.ui.View]:
     sections = []
     for role_info in ROLE_ORDER:
-        members = sort_members(get_members_with_role(guild, role_info.role_id))
+        members = sort_members(await get_members_with_role(guild, role_info.role_id))
         count = len(members)
 
         header = f'{role_info.label} ({count})'
@@ -1279,7 +1280,7 @@ async def create_or_get_recruit_invite(member: discord.Member) -> dict:
 
 async def build_recruit_payload(guild: discord.Guild) -> tuple[discord.Embed, discord.ui.View]:
     state = read_recruit_state()
-    recruits = sort_members(get_members_with_role(guild, RECRUIT_ROLE_ID))
+    recruits = sort_members(await get_members_with_role(guild, RECRUIT_ROLE_ID))
 
     try:
         invites = await fetch_invites(guild)
@@ -1494,7 +1495,7 @@ async def refresh_board() -> None:
     async with bot.refresh_lock:
         channel = await get_text_channel(TARGET_CHANNEL_ID)
         await fetch_all_members(channel.guild)
-        embed, view = build_payload(channel.guild)
+        embed, view = await build_payload(channel.guild)
         state = read_state()
         message = None
         if state.get('message_id'):

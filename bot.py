@@ -1066,7 +1066,20 @@ def sort_members(members):
     return sorted(members, key=lambda m: m.display_name.casefold())
 
 def has_recruit_role(member: discord.Member) -> bool:
-    return any(role.id == RECRUIT_ROLE_ID for role in member.roles)
+    # Treat "recruit" and any higher-ranked role (earlier in ROLE_ORDER) as allowed
+    role_ids = [r.role_id for r in ROLE_ORDER]
+    try:
+        recruit_index = role_ids.index(RECRUIT_ROLE_ID)
+    except ValueError:
+        # Fallback to exact role match if ROLE_ORDER is missing the recruit role
+        return any(role.id == RECRUIT_ROLE_ID for role in member.roles)
+    member_role_ids = {role.id for role in member.roles}
+    # If member has any role whose index is less or equal to recruit_index (higher or equal), allow
+    for idx, rid in enumerate(role_ids):
+        if rid in member_role_ids and idx <= recruit_index:
+            return True
+    return False
+
 
 async def get_text_channel(channel_id: int) -> discord.TextChannel:
     channel = bot.get_channel(channel_id)

@@ -118,9 +118,15 @@ class RefreshView(discord.ui.View):
 
     @discord.ui.button(label='Обновить', style=discord.ButtonStyle.primary, emoji='🔄', custom_id=REFRESH_BUTTON_ID)
     async def refresh_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        await interaction.response.send_message('Обновляю баннер...', ephemeral=True)
-        asyncio.create_task(send_log('🔄 Обновление состава', f'{interaction.user.mention} нажал кнопку **Обновить** (состав семьи)', color=0x3B82F6, user=interaction.user))
+        try:
+            await interaction.response.defer(ephemeral=True)
+        except Exception:
+            return
         asyncio.create_task(refresh_board_safely())
+        try:
+            await interaction.followup.send('Обновляю баннер...', ephemeral=True)
+        except Exception:
+            pass
 
 
 
@@ -323,21 +329,14 @@ class RecruitView(discord.ui.View):
     @discord.ui.button(label='Обновить', style=discord.ButtonStyle.secondary, emoji='🔄', custom_id=REFRESH_RECRUIT_BOARD_BUTTON_ID)
     async def refresh_recruit_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         try:
-            await interaction.response.send_message('Обновляю плашку рекрутов...', ephemeral=True)
-        except discord.NotFound:
-            # Interaction expired / unknown
+            await interaction.response.defer(ephemeral=True)
+        except Exception:
             return
-        except discord.HTTPException as exc:
-            # If interaction already acknowledged, try followup
-            if 'already been acknowledged' in str(exc):
-                try:
-                    await interaction.followup.send('Обновляю плашку рекрутов...', ephemeral=True)
-                except Exception:
-                    return
-            else:
-                return
-        asyncio.create_task(send_log('🔄 Обновление рекрутов', f'{interaction.user.mention} нажал кнопку **Обновить** (рекруты)', color=0x3B82F6, user=interaction.user))
         asyncio.create_task(refresh_recruit_board_safely())
+        try:
+            await interaction.followup.send('Обновляю плашку рекрутов...', ephemeral=True)
+        except Exception:
+            pass
 
 # --------------- Заявка в семью (тикеты + кнопки решения) ---------------
 

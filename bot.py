@@ -1840,8 +1840,11 @@ async def on_ready() -> None:
             await update_invite_cache(guild)
         except Exception as exc:
             print(f'Invite cache failed for {guild}: {exc}')
-    if not auto_refresh.is_running():
-        auto_refresh.start()
+    try:
+        if not auto_refresh.is_running():
+            auto_refresh.start()
+    except Exception as exc:
+        print(f'auto_refresh start failed: {exc}')
     asyncio.create_task(refresh_board_safely())
     asyncio.create_task(refresh_recruit_board_safely())
     asyncio.create_task(refresh_report_button_message_safely())
@@ -1851,13 +1854,16 @@ async def on_ready() -> None:
     asyncio.create_task(refresh_recruit_app_banner_safely())
     asyncio.create_task(refresh_admin_panel_safely())
     asyncio.create_task(refresh_blacklist_safely())
-    await send_log(
-        '🟢 Бот запущен',
-        f'**{bot.user}** успешно подключился\n'
-        f'Серверов: **{len(bot.guilds)}**\n'
-        f'Пинг: **{round(bot.latency * 1000)}** мс',
-        color=0x10B981,
-    )
+    try:
+        await send_log(
+            '🟢 Бот запущен',
+            f'**{bot.user}** успешно подключился\n'
+            f'Серверов: **{len(bot.guilds)}**\n'
+            f'Пинг: **{round(bot.latency * 1000)}** мс',
+            color=0x10B981,
+        )
+    except Exception as exc:
+        print(f'send_log on startup failed: {exc}')
 
 @bot.event
 async def on_member_join(member: discord.Member) -> None:

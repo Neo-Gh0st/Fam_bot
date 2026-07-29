@@ -1218,15 +1218,23 @@ async def update_invite_cache(guild: discord.Guild) -> dict[str, discord.Invite]
     bot.invite_cache[guild.id] = {code: invite.uses or 0 for code, invite in invites.items()}
     return invites
 
+def get_members_with_role(guild: discord.Guild, role_id: int) -> list[discord.Member]:
+    role = guild.get_role(role_id)
+    if role is None:
+        return []
+    if role.members:
+        return role.members
+    return [m for m in guild.members if role in m.roles]
+
+
 def build_payload(guild: discord.Guild) -> tuple[discord.Embed, discord.ui.View]:
     sections = []
-    for role in ROLE_ORDER:
-        guild_role = guild.get_role(role.role_id)
-        members = sort_members(guild_role.members) if guild_role else []
+    for role_info in ROLE_ORDER:
+        members = sort_members(get_members_with_role(guild, role_info.role_id))
         count = len(members)
 
-        header = f'{role.label} ({count})'
-        if role.count_only:
+        header = f'{role_info.label} ({count})'
+        if role_info.count_only:
             sections.append(header)
             continue
         body = '\n'.join(f'• {format_member(member)}' for member in members) if members else '• нет участников'
@@ -1263,8 +1271,7 @@ async def create_or_get_recruit_invite(member: discord.Member) -> dict:
 
 async def build_recruit_payload(guild: discord.Guild) -> tuple[discord.Embed, discord.ui.View]:
     state = read_recruit_state()
-    recruit_role = guild.get_role(RECRUIT_ROLE_ID)
-    recruits = sort_members(recruit_role.members) if recruit_role else []
+    recruits = sort_members(get_members_with_role(guild, RECRUIT_ROLE_ID))
 
     try:
         invites = await fetch_invites(guild)

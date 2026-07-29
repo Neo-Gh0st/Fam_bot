@@ -2764,6 +2764,11 @@ async def check_raid(member: discord.Member) -> None:
                 pass
 
 
+@bot.tree.command(name='test', description='Проверка бота')
+async def test_cmd(interaction: discord.Interaction) -> None:
+    await interaction.response.send_message('Привет', ephemeral=True)
+
+
 # --------------- Бот запускается ---------------
 
 bot.run(BOT_TOKEN)

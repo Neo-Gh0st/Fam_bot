@@ -30,7 +30,7 @@ ROLE_ORDER = [
     RoleInfo('Deputy Owner', 1531246359729016969, ''),
     RoleInfo('High Rank', 1531246359729016968, ''),
     RoleInfo('Medium Rank', 1531246359729016966, ''),
-    RoleInfo('CENT', 1532160268363235438, ''),
+    RoleInfo('CENT', 1531764101901062256, ''),
 ]
 
 RECRUIT_ROLE_ID = 1531246359712370817
@@ -341,7 +341,7 @@ class RecruitView(discord.ui.View):
 # --------------- Заявка в семью (тикеты + кнопки решения) ---------------
 
 FRIEND_ROLE_ID = 1531246359674487040
-CENT_ROLE_ID = 1532160268363235438
+CENT_ROLE_ID = 1531764101901062256
 
 # Хранилище собранных данных заявки по user_id
 family_applications: dict[int, dict] = {}

@@ -27,13 +27,11 @@ class RoleInfo:
 
 ROLE_ORDER = [
     RoleInfo('Owner', 1531246359729016972, '👑'),
-    RoleInfo('Moder', 1531246359729016971, '🛡️'),
     RoleInfo('Deputy Owner', 1531246359729016969, '✨'),
     RoleInfo('High Rank', 1531246359729016968, '🌟'),
     RoleInfo('Medium Rank', 1531246359729016966, '🔥'),
     RoleInfo('High VZP', 1531246359729016967, '⚔️'),
     RoleInfo('VZP', 0, '🗡️'),
-    RoleInfo('Friend', 1531246359674487040, '🤝', True),
     RoleInfo('CENT', 1531764101901062256, '🌿', True),
 ]
 

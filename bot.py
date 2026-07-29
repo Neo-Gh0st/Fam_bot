@@ -62,7 +62,7 @@ THUMBNAIL_URL = BOT_IMAGE_URL
 MAIN_IMAGE_URL = BOT_IMAGE_URL
 WELCOME_IMAGE_URL = BOT_IMAGE_URL
 ADMIN_PANEL_CHANNEL_ID = int(os.getenv('ADMIN_PANEL_CHANNEL_ID', '1523819460538925086'))
-MEETING_ROLE_ID = int(os.getenv('MEETING_ROLE_ID', '1531764101901062256'))
+MEETING_ROLE_ID = int(os.getenv('MEETING_ROLE_ID', '0'))
 MEETING_VOICE_CHANNEL_ID = int(os.getenv('MEETING_VOICE_CHANNEL_ID', '1342078486419869762'))
 AUTO_REFRESH_SECONDS = 5 * 60
 REFRESH_BUTTON_ID = 'family_refresh'
@@ -347,7 +347,6 @@ class RecruitView(discord.ui.View):
 
 FRIEND_ROLE_ID = 1531246359674487040
 CENT_ROLE_ID = 1531764101901062256
-GUEST_ROLE_ID = 1504073438929883157
 
 # Хранилище собранных данных заявки по user_id
 family_applications: dict[int, dict] = {}
@@ -375,18 +374,10 @@ class FamilyAppDecisionView(discord.ui.View):
 
         guild = interaction.guild
         applicant = guild.get_member(self.applicant_id)
-        roles_to_add = [r for r in (guild.get_role(FRIEND_ROLE_ID), guild.get_role(CENT_ROLE_ID)) if r is not None]
-        if applicant and roles_to_add:
+        cent_role = guild.get_role(CENT_ROLE_ID)
+        if applicant and cent_role:
             try:
-                await applicant.add_roles(*roles_to_add, reason=f'Заявка принята {interaction.user}')
-            except Exception:
-                pass
-
-        # Снимаем роль «Гость» при принятии
-        guest_role = guild.get_role(GUEST_ROLE_ID)
-        if applicant and guest_role and guest_role in applicant.roles:
-            try:
-                await applicant.remove_roles(guest_role, reason=f'Заявка принята {interaction.user}')
+                await applicant.add_roles(cent_role, reason=f'Заявка принята {interaction.user}')
             except Exception:
                 pass
 

@@ -26,17 +26,18 @@ class RoleInfo:
     count_only: bool = False
 
 ROLE_ORDER = [
-    RoleInfo('Owner', 1342073308023099413, '👑'),
-    RoleInfo('Dep.Leader', 1363988534356344872, '✨'),
-    RoleInfo('Рекрут', 1531808089559400478, '🪖'),
-    RoleInfo('YoungMentor', 1509889918200053880, '🌟'),
-    RoleInfo('YoungWarrior', 1509888639973326899, '⚔️'),
-    RoleInfo('YoungHooligan', 1509888026397114499, '🔥'),
-    RoleInfo('Young Junior', 1509909783527030784, '⭐'),
-    RoleInfo('CENT', 1509884678839079033, '🌿', True),
+    RoleInfo('Owner', 1531246359729016972, '👑'),
+    RoleInfo('Moder', 1531246359729016971, '🛡️'),
+    RoleInfo('Recruit', 1531246359712370817, '🪖'),
+    RoleInfo('CENT', 1531764101901062256, '🌿', True),
+    RoleInfo('Deputy Owner', 1531246359729016969, '✨'),
+    RoleInfo('High Rank', 1531246359729016968, '🌟'),
+    RoleInfo('High VZP', 1531246359729016967, '⚔️'),
+    RoleInfo('Medium Rank', 1531246359729016966, '🔥'),
+    RoleInfo('Friend', 1531246359674487040, '🤝'),
 ]
 
-RECRUIT_ROLE_ID = 1531808089559400478
+RECRUIT_ROLE_ID = 1531246359712370817
 THUMBNAIL_URL = 'https://media.discordapp.net/attachments/1509878666782445678/1517471349679849603/file_00000000f4a8722fafeb213d214c0763_4.png?ex=6a443e93&is=6a42ed13&hm=0c9589eead2a223a954137051b31fb35949d7c69dc49cbb934419c963c55cc66&=&format=webp&quality=lossless&width=864&height=864'
 MAIN_IMAGE_URL = 'https://cdn.discordapp.com/attachments/1346126083363307651/1346128287000297563/YOUNGHILL-03-03-2025.gif?ex=6a43d3a9&is=6a428229&hm=8f89a624939d58b8ac6505a6bb4c5ee1b3430fae2e9b99e5bd0333a54ccf306c&'
 WELCOME_IMAGE_URL = 'https://cdn.discordapp.com/attachments/1342073128112623666/1520871241353793608/welcome.png?ex=6a456838&is=6a4416b8&hm=07c5a8cf2126711faa146c83bdf3e11e7abf207939280eeb6ec9f9b743721301&'
@@ -61,7 +62,7 @@ THUMBNAIL_URL = BOT_IMAGE_URL
 MAIN_IMAGE_URL = BOT_IMAGE_URL
 WELCOME_IMAGE_URL = BOT_IMAGE_URL
 ADMIN_PANEL_CHANNEL_ID = int(os.getenv('ADMIN_PANEL_CHANNEL_ID', '1523819460538925086'))
-MEETING_ROLE_ID = int(os.getenv('MEETING_ROLE_ID', '1509884678839079033'))
+MEETING_ROLE_ID = int(os.getenv('MEETING_ROLE_ID', '1531764101901062256'))
 MEETING_VOICE_CHANNEL_ID = int(os.getenv('MEETING_VOICE_CHANNEL_ID', '1342078486419869762'))
 AUTO_REFRESH_SECONDS = 5 * 60
 REFRESH_BUTTON_ID = 'family_refresh'
@@ -344,8 +345,8 @@ class RecruitView(discord.ui.View):
 
 # --------------- Заявка в семью (тикеты + кнопки решения) ---------------
 
-YOUNG_JUNIOR_ROLE_ID = 1509909783527030784
-CENT_ROLE_ID = 1509884678839079033
+FRIEND_ROLE_ID = 1531246359674487040
+CENT_ROLE_ID = 1531764101901062256
 GUEST_ROLE_ID = 1504073438929883157
 
 # Хранилище собранных данных заявки по user_id
@@ -374,7 +375,7 @@ class FamilyAppDecisionView(discord.ui.View):
 
         guild = interaction.guild
         applicant = guild.get_member(self.applicant_id)
-        roles_to_add = [r for r in (guild.get_role(YOUNG_JUNIOR_ROLE_ID), guild.get_role(CENT_ROLE_ID)) if r is not None]
+        roles_to_add = [r for r in (guild.get_role(FRIEND_ROLE_ID), guild.get_role(CENT_ROLE_ID)) if r is not None]
         if applicant and roles_to_add:
             try:
                 await applicant.add_roles(*roles_to_add, reason=f'Заявка принята {interaction.user}')

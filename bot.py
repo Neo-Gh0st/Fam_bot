@@ -1545,14 +1545,12 @@ async def refresh_board_safely() -> None:
         await refresh_board()
     except Exception as exc:
         print(f'Family board refresh failed: {exc}')
-        asyncio.create_task(send_log('❌ Ошибка обновления состава', f'```{traceback.format_exc()[-1500:]}```', color=0xEF4444))
 
 async def refresh_recruit_board_safely() -> None:
     try:
         await refresh_recruit_board()
     except Exception as exc:
         print(f'Recruit board refresh failed: {exc}')
-        asyncio.create_task(send_log('❌ Ошибка обновления рекрутов', f'```{traceback.format_exc()[-1500:]}```', color=0xEF4444))
 
 
 async def refresh_blacklist_message() -> None:
@@ -1597,7 +1595,6 @@ async def refresh_blacklist_safely() -> None:
         await refresh_blacklist_message()
     except Exception as exc:
         print(f'Blacklist refresh failed: {exc}')
-        asyncio.create_task(send_log('❌ Ошибка обновления чёрного списка', f'```{traceback.format_exc()[-1500:]}```', color=0xEF4444))
 
 
 

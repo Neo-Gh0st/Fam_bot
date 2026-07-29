@@ -1221,9 +1221,13 @@ async def update_invite_cache(guild: discord.Guild) -> dict[str, discord.Invite]
 async def get_members_with_role(guild: discord.Guild, role_id: int) -> list[discord.Member]:
     role = guild.get_role(role_id)
     if role is None:
+        try:
+            roles = await guild.fetch_roles()
+            role = discord.utils.get(roles, id=role_id)
+        except Exception:
+            return []
+    if role is None:
         return []
-    if role.members:
-        return list(role.members)
     return [m for m in guild.members if role in m.roles]
 
 

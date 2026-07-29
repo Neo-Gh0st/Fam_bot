@@ -1839,6 +1839,7 @@ async def track_member_invite(member: discord.Member) -> None:
 async def on_ready() -> None:
     print(f'Logged in as {bot.user.id}')
     for guild in bot.guilds:
+        print(f'Guild: {guild.name} ({guild.id}) - {guild.member_count} members')
         try:
             await update_invite_cache(guild)
         except Exception as exc:
@@ -1857,6 +1858,8 @@ async def on_ready() -> None:
     asyncio.create_task(refresh_recruit_app_banner_safely())
     asyncio.create_task(refresh_admin_panel_safely())
     asyncio.create_task(refresh_blacklist_safely())
+    await asyncio.sleep(2)
+    print('All on_ready tasks launched')
     try:
         await send_log(
             '🟢 Бот запущен',

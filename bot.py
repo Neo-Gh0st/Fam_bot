@@ -1227,6 +1227,14 @@ def get_members_with_role(guild: discord.Guild, role_id: int) -> list[discord.Me
     return [m for m in guild.members if role in m.roles]
 
 
+async def fetch_all_members(guild: discord.Guild) -> None:
+    if not guild.chunked:
+        try:
+            await guild.fetch_members(limit=None)
+        except Exception as exc:
+            print(f'Could not fetch members for {guild}: {exc}')
+
+
 def build_payload(guild: discord.Guild) -> tuple[discord.Embed, discord.ui.View]:
     sections = []
     for role_info in ROLE_ORDER:
@@ -1485,6 +1493,7 @@ async def auto_birthday_greeting() -> None:
 async def refresh_board() -> None:
     async with bot.refresh_lock:
         channel = await get_text_channel(TARGET_CHANNEL_ID)
+        await fetch_all_members(channel.guild)
         embed, view = build_payload(channel.guild)
         state = read_state()
         message = None
@@ -1510,6 +1519,7 @@ async def refresh_board() -> None:
 async def refresh_recruit_board() -> None:
     async with bot.recruit_lock:
         channel = await get_text_channel(RECRUIT_BOARD_CHANNEL_ID)
+        await fetch_all_members(channel.guild)
         embed, view = await build_recruit_payload(channel.guild)
         state = read_recruit_state()
         message = None

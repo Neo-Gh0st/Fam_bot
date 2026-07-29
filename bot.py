@@ -28,7 +28,7 @@ class RoleInfo:
 ROLE_ORDER = [
     RoleInfo('Owner', 1342073308023099413, '👑'),
     RoleInfo('Dep.Leader', 1363988534356344872, '✨'),
-    RoleInfo('Рекрут', 1518186204493906060, '🪖'),
+    RoleInfo('Рекрут', 1531808089559400478, '🪖'),
     RoleInfo('YoungMentor', 1509889918200053880, '🌟'),
     RoleInfo('YoungWarrior', 1509888639973326899, '⚔️'),
     RoleInfo('YoungHooligan', 1509888026397114499, '🔥'),
@@ -36,7 +36,7 @@ ROLE_ORDER = [
     RoleInfo('CENT', 1509884678839079033, '🌿', True),
 ]
 
-RECRUIT_ROLE_ID = 1518186204493906060
+RECRUIT_ROLE_ID = 1531808089559400478
 THUMBNAIL_URL = 'https://media.discordapp.net/attachments/1509878666782445678/1517471349679849603/file_00000000f4a8722fafeb213d214c0763_4.png?ex=6a443e93&is=6a42ed13&hm=0c9589eead2a223a954137051b31fb35949d7c69dc49cbb934419c963c55cc66&=&format=webp&quality=lossless&width=864&height=864'
 MAIN_IMAGE_URL = 'https://cdn.discordapp.com/attachments/1346126083363307651/1346128287000297563/YOUNGHILL-03-03-2025.gif?ex=6a43d3a9&is=6a428229&hm=8f89a624939d58b8ac6505a6bb4c5ee1b3430fae2e9b99e5bd0333a54ccf306c&'
 WELCOME_IMAGE_URL = 'https://cdn.discordapp.com/attachments/1342073128112623666/1520871241353793608/welcome.png?ex=6a456838&is=6a4416b8&hm=07c5a8cf2126711faa146c83bdf3e11e7abf207939280eeb6ec9f9b743721301&'
@@ -80,17 +80,17 @@ LEADERBOARD_NEXT_BUTTON_ID = 'leaderboard_next'
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 CLIENT_ID = os.getenv('CLIENT_ID')
 GUILD_ID = os.getenv('GUILD_ID')
-TARGET_CHANNEL_ID = int(os.getenv('TARGET_CHANNEL_ID', '1521295122204201163'))
+TARGET_CHANNEL_ID = int(os.getenv('TARGET_CHANNEL_ID', '1531246362274955369'))
 RECRUIT_BOARD_CHANNEL_ID = int(os.getenv('RECRUIT_BOARD_CHANNEL_ID', str(TARGET_CHANNEL_ID)))
 INVITE_CHANNEL_ID = int(os.getenv('INVITE_CHANNEL_ID', str(TARGET_CHANNEL_ID)))
-RECRUIT_REPORT_CHANNEL_ID = int(os.getenv('RECRUIT_REPORT_CHANNEL_ID', '1518190906749095946'))
+RECRUIT_REPORT_CHANNEL_ID = int(os.getenv('RECRUIT_REPORT_CHANNEL_ID', '1531246362274955371'))
 BIRTHDAY_BOARD_CHANNEL_ID = int(os.getenv('BIRTHDAY_BOARD_CHANNEL_ID', '0'))
 BIRTHDAY_GREETING_CHANNEL_ID = int(os.getenv('BIRTHDAY_GREETING_CHANNEL_ID', '0'))
 LOG_CHANNEL_ID = int(os.getenv('LOG_CHANNEL_ID', '0'))
 WELCOME_CHANNEL_ID = int(os.getenv('WELCOME_CHANNEL_ID', '1342073128112623666'))
 
 APP_CREATE_CHANNEL_ID = int(os.getenv('APP_CREATE_CHANNEL_ID', '0'))
-APP_LOG_CHANNEL_ID = int(os.getenv('APP_LOG_CHANNEL_ID', '0'))
+APP_LOG_CHANNEL_ID = int(os.getenv('APP_LOG_CHANNEL_ID', '1531246362274955368'))
 APP_CATEGORY_ID = int(os.getenv('APP_CATEGORY_ID', '0'))
 RECRUIT_APP_BANNER_CHANNEL_ID = int(os.getenv('RECRUIT_APP_BANNER_CHANNEL_ID', '0'))
 RECRUIT_APP_LIST_CHANNEL_ID = int(os.getenv('RECRUIT_APP_LIST_CHANNEL_ID', '0'))
@@ -210,9 +210,29 @@ class RecruitReportButtonView(discord.ui.View):
     @discord.ui.button(label='Отписать приглашённого', style=discord.ButtonStyle.primary, emoji='📝', custom_id=REPORT_RECRUIT_INVITE_BUTTON_ID)
     async def report_invite_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         if not isinstance(interaction.user, discord.Member) or not has_recruit_role(interaction.user):
-            await interaction.response.send_message('Эта кнопка доступна только рекрутам.', ephemeral=True)
+            try:
+                await interaction.response.send_message('Эта кнопка доступна только рекрутам.', ephemeral=True)
+            except discord.HTTPException as exc:
+                if 'already been acknowledged' in str(exc):
+                    try:
+                        await interaction.followup.send('Эта кнопка доступна только рекрутам.', ephemeral=True)
+                    except Exception:
+                        return
+                else:
+                    return
             return
-        await interaction.response.send_modal(RecruitReportModal())
+        try:
+            await interaction.response.send_modal(RecruitReportModal())
+        except discord.NotFound:
+            return
+        except discord.HTTPException as exc:
+            if 'already been acknowledged' in str(exc):
+                try:
+                    await interaction.followup.send('Не удалось открыть форму, попробуйте снова.', ephemeral=True)
+                except Exception:
+                    pass
+            else:
+                raise
 
 class RecruitView(discord.ui.View):
     def __init__(self) -> None:
@@ -249,7 +269,20 @@ class RecruitView(discord.ui.View):
 
     @discord.ui.button(label='Обновить', style=discord.ButtonStyle.secondary, emoji='🔄', custom_id=REFRESH_RECRUIT_BOARD_BUTTON_ID)
     async def refresh_recruit_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        await interaction.response.send_message('Обновляю плашку рекрутов...', ephemeral=True)
+        try:
+            await interaction.response.send_message('Обновляю плашку рекрутов...', ephemeral=True)
+        except discord.NotFound:
+            # Interaction expired / unknown
+            return
+        except discord.HTTPException as exc:
+            # If interaction already acknowledged, try followup
+            if 'already been acknowledged' in str(exc):
+                try:
+                    await interaction.followup.send('Обновляю плашку рекрутов...', ephemeral=True)
+                except Exception:
+                    return
+            else:
+                return
         asyncio.create_task(send_log('🔄 Обновление рекрутов', f'{interaction.user.mention} нажал кнопку **Обновить** (рекруты)', color=0x3B82F6, user=interaction.user))
         asyncio.create_task(refresh_recruit_board_safely())
 
@@ -529,195 +562,50 @@ class ApplicationCreateView(discord.ui.View):
 
     @discord.ui.button(label='Ticket', style=discord.ButtonStyle.primary, emoji='🤝', custom_id='app_create_ticket')
     async def create_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(AppModalPartOne(app_type='Ticket'))
+        try:
+            await interaction.response.send_modal(AppModalPartOne(app_type='Ticket'))
+        except discord.NotFound:
+            # Interaction expired
+            return
+        except discord.HTTPException as exc:
+            if 'already been acknowledged' in str(exc):
+                try:
+                    await interaction.followup.send('Не удалось открыть форму, попробуйте снова.', ephemeral=True)
+                except Exception:
+                    pass
+            else:
+                raise
 
     @discord.ui.button(label='VZP', style=discord.ButtonStyle.secondary, emoji='🔫', custom_id='app_create_vzp')
     async def create_vzp_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(AppModalPartOne(app_type='VZP'))
-
-# --------------- Заявка в рекруты ---------------
-
-class RecruitAppModal(discord.ui.Modal, title='Заявка в рекруты'):
-    full_name = discord.ui.TextInput(
-        label='Имя Фамилия',
-        placeholder='Например: Иван Иванов',
-        max_length=80,
-    )
-    hours_online = discord.ui.TextInput(
-        label='Сколько часов в онлайне?',
-        placeholder='Например: 500',
-        max_length=40,
-    )
-    previous_experience = discord.ui.TextInput(
-        label='Принимали ли людей раньше?',
-        placeholder='Да/Нет и кратко где',
-        max_length=200,
-        style=discord.TextStyle.paragraph,
-    )
-
-    async def on_submit(self, interaction: discord.Interaction) -> None:
-        if not isinstance(interaction.user, discord.Member):
-            await interaction.response.send_message('Эта форма работает только на сервере.', ephemeral=True)
+        try:
+            await interaction.response.send_modal(AppModalPartOne(app_type='VZP'))
+        except discord.NotFound:
             return
-        if has_recruit_role(interaction.user):
-            await interaction.response.send_message('У тебя уже есть роль рекрута.', ephemeral=True)
-            return
+        except discord.HTTPException as exc:
+            if 'already been acknowledged' in str(exc):
+                try:
+                    await interaction.followup.send('Не удалось открыть форму, попробуйте снова.', ephemeral=True)
+                except Exception:
+                    pass
+            else:
+                raise
 
-        await interaction.response.send_message('Заявка отправлена!', ephemeral=True)
+# --------------- Заявки в рекруты удалены ---------------
 
-        embed = discord.Embed(title='🪖 Заявка в рекруты', color=0x22C55E)
-        embed.set_thumbnail(url=THUMBNAIL_URL)
-        embed.add_field(name='Участник', value=_log_user_field(interaction.user), inline=True)
-        embed.add_field(name='Имя Фамилия', value=str(self.full_name), inline=True)
-        embed.add_field(name='Часов онлайн', value=str(self.hours_online), inline=True)
-        embed.add_field(name='Опыт рекрутинга', value=str(self.previous_experience), inline=False)
-        embed.timestamp = discord.utils.utcnow()
-        embed.set_footer(text='Ожидает рассмотрения')
-
-        if RECRUIT_APP_LIST_CHANNEL_ID:
-            try:
-                channel = bot.get_channel(RECRUIT_APP_LIST_CHANNEL_ID)
-                if channel is None:
-                    channel = await bot.fetch_channel(RECRUIT_APP_LIST_CHANNEL_ID)
-                if isinstance(channel, discord.TextChannel):
-                    msg = await channel.send(embed=embed, view=RecruitAppDecisionView(interaction.user.id))
-                    # Сохраняем ID сообщения заявки
-                    async with bot.recruit_app_lock:
-                        state = read_recruit_app_state()
-                        state['applications'][str(interaction.user.id)] = {
-                            'message_id': msg.id,
-                            'channel_id': channel.id,
-                            'full_name': str(self.full_name),
-                            'hours': str(self.hours_online),
-                            'experience': str(self.previous_experience),
-                            'submitted_at': discord.utils.utcnow().isoformat(),
-                            'status': 'pending',
-                        }
-                        write_recruit_app_state(state)
-            except Exception as exc:
-                print(f'Failed to post recruit app: {exc}')
-
-        asyncio.create_task(send_log(
-            '🪖 Новая заявка в рекруты',
-            fields=[
-                ('Участник', _log_user_field(interaction.user), True),
-                ('Имя Фамилия', str(self.full_name), True),
-            ],
-            color=0x22C55E, user=interaction.user,
-        ))
-
-
+# Заглушки для совместимости с Discord custom_id кэшем
 class RecruitAppDecisionView(discord.ui.View):
-    def __init__(self, applicant_id: int):
+    def __init__(self, applicant_id: int = 0):
         super().__init__(timeout=None)
         self.applicant_id = applicant_id
 
-    def _is_higher_role(self, member: discord.Member) -> bool:
-        recruit_role = member.guild.get_role(RECRUIT_ROLE_ID)
-        if recruit_role is None:
-            return False
-        return member.top_role.position > recruit_role.position
-
     @discord.ui.button(label='✅ Принять', style=discord.ButtonStyle.success, emoji='✅', custom_id='recruit_app_accept')
     async def accept(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not isinstance(interaction.user, discord.Member) or not self._is_higher_role(interaction.user):
-            await interaction.response.send_message('У тебя нет прав принимать заявки.', ephemeral=True)
-            return
-
-        await interaction.response.defer()
-
-        # Обновляем state
-        async with bot.recruit_app_lock:
-            state = read_recruit_app_state()
-            app = state['applications'].get(str(self.applicant_id))
-            if app:
-                app['status'] = 'accepted'
-                app['reviewed_by'] = interaction.user.id
-                app['reviewed_at'] = discord.utils.utcnow().isoformat()
-                write_recruit_app_state(state)
-
-        # Даём роль
-        guild = interaction.guild
-        recruit_role = guild.get_role(RECRUIT_ROLE_ID)
-        applicant = guild.get_member(self.applicant_id)
-        if applicant and recruit_role:
-            try:
-                await applicant.add_roles(recruit_role, reason=f'Заявка принята {interaction.user}')
-            except Exception:
-                pass
-
-        # ДМ заявителю
-        if applicant:
-            try:
-                await applicant.send(
-                    'Ваша заявка была рассмотрена, Вас приняли на роль **Рекрута**.\nПоздравляем! 🎉'
-                )
-            except Exception:
-                pass
-
-        # Обновляем embed
-        embed = interaction.message.embeds[0] if interaction.message.embeds else None
-        if embed:
-            new_embed = embed.copy()
-            new_embed.color = 0x10B981
-            new_embed.set_footer(text=f'✅ Принята — {interaction.user.display_name}')
-            for child in self.children:
-                child.disabled = True
-            await interaction.message.edit(embed=new_embed, view=self)
-
-        asyncio.create_task(send_log(
-            '✅ Заявка в рекруты принята',
-            fields=[
-                ('Рекрут', f'<@{self.applicant_id}> (`{self.applicant_id}`)', True),
-                ('Рассмотрел', _log_user_field(interaction.user), True),
-            ],
-            color=0x10B981, user=interaction.user,
-        ))
+        await interaction.response.send_message('Эта функция больше не используется.', ephemeral=True)
 
     @discord.ui.button(label='❌ Отклонить', style=discord.ButtonStyle.danger, emoji='❌', custom_id='recruit_app_reject')
     async def reject(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not isinstance(interaction.user, discord.Member) or not self._is_higher_role(interaction.user):
-            await interaction.response.send_message('У тебя нет прав отклонять заявки.', ephemeral=True)
-            return
-
-        await interaction.response.defer()
-
-        # Обновляем state
-        async with bot.recruit_app_lock:
-            state = read_recruit_app_state()
-            app = state['applications'].get(str(self.applicant_id))
-            if app:
-                app['status'] = 'rejected'
-                app['reviewed_by'] = interaction.user.id
-                app['reviewed_at'] = discord.utils.utcnow().isoformat()
-                write_recruit_app_state(state)
-
-        # ДМ заявителю
-        applicant = interaction.guild.get_member(self.applicant_id)
-        if applicant:
-            try:
-                await applicant.send('Ваша заявка была рассмотрена, **Отказано**.')
-            except Exception:
-                pass
-
-        # Обновляем embed
-        embed = interaction.message.embeds[0] if interaction.message.embeds else None
-        if embed:
-            new_embed = embed.copy()
-            new_embed.color = 0xEF4444
-            new_embed.set_footer(text=f'❌ Отклонена — {interaction.user.display_name}')
-            for child in self.children:
-                child.disabled = True
-            await interaction.message.edit(embed=new_embed, view=self)
-
-        asyncio.create_task(send_log(
-            '❌ Заявка в рекруты отклонена',
-            fields=[
-                ('Рекрут', f'<@{self.applicant_id}> (`{self.applicant_id}`)', True),
-                ('Рассмотрел', _log_user_field(interaction.user), True),
-            ],
-            color=0xEF4444, user=interaction.user,
-        ))
+        await interaction.response.send_message('Эта функция больше не используется.', ephemeral=True)
 
 
 class RecruitAppBannerView(discord.ui.View):
@@ -726,13 +614,7 @@ class RecruitAppBannerView(discord.ui.View):
 
     @discord.ui.button(label='Подать заявку в рекруты', style=discord.ButtonStyle.success, emoji='🪖', custom_id=RECRUIT_APP_BUTTON_ID)
     async def apply(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not isinstance(interaction.user, discord.Member):
-            await interaction.response.send_message('Эта кнопка работает только на сервере.', ephemeral=True)
-            return
-        if has_recruit_role(interaction.user):
-            await interaction.response.send_message('У тебя уже есть роль рекрута.', ephemeral=True)
-            return
-        await interaction.response.send_modal(RecruitAppModal())
+        await interaction.response.send_message('Система заявок в рекруты отключена.', ephemeral=True)
 
 class AdminPanelView(discord.ui.View):
     def __init__(self):

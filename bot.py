@@ -28,13 +28,13 @@ class RoleInfo:
 ROLE_ORDER = [
     RoleInfo('Owner', 1531246359729016972, '👑'),
     RoleInfo('Moder', 1531246359729016971, '🛡️'),
-    RoleInfo('Recruit', 1531246359712370817, '🪖'),
-    RoleInfo('CENT', 1531764101901062256, '🌿', True),
     RoleInfo('Deputy Owner', 1531246359729016969, '✨'),
     RoleInfo('High Rank', 1531246359729016968, '🌟'),
-    RoleInfo('High VZP', 1531246359729016967, '⚔️'),
     RoleInfo('Medium Rank', 1531246359729016966, '🔥'),
-    RoleInfo('Friend', 1531246359674487040, '🤝'),
+    RoleInfo('High VZP', 1531246359729016967, '⚔️'),
+    RoleInfo('VZP', 0, '🗡️'),
+    RoleInfo('Friend', 1531246359674487040, '🤝', True),
+    RoleInfo('CENT', 1531764101901062256, '🌿', True),
 ]
 
 RECRUIT_ROLE_ID = 1531246359712370817
@@ -1225,10 +1225,17 @@ async def update_invite_cache(guild: discord.Guild) -> dict[str, discord.Invite]
 
 def build_payload(guild: discord.Guild) -> tuple[discord.Embed, discord.ui.View]:
     sections = []
+    cent_count = 0
     for role in ROLE_ORDER:
         guild_role = guild.get_role(role.role_id)
         members = sort_members(guild_role.members) if guild_role else []
-        header = f'{role.emoji} {role.label} ({len(members)})'
+        count = len(members)
+
+        if role.label == 'CENT':
+            cent_count = count
+            continue
+
+        header = f'{role.emoji} {role.label} ({count})'
         if role.count_only:
             sections.append(header)
             continue
@@ -1238,6 +1245,7 @@ def build_payload(guild: discord.Guild) -> tuple[discord.Embed, discord.ui.View]
     embed = discord.Embed(title=f'👥 Состав семьи {guild.name}', description='\n\n'.join(sections), color=0xF59E0B)
     embed.set_thumbnail(url=THUMBNAIL_URL)
     embed.set_image(url=MAIN_IMAGE_URL)
+    embed.add_field(name='🌿 Семья CENT', value=f'**{cent_count}** участников', inline=False)
     embed.add_field(name='📊 Всего на сервере', value=f'**{guild.member_count}** участников', inline=False)
     embed.set_footer(text='Автообновление каждые 5 минут')
     embed.timestamp = discord.utils.utcnow()

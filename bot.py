@@ -937,7 +937,6 @@ class FamilyBot(commands.Bot):
         self.add_view(RecruitAppBannerView())
         self.add_view(AdminPanelView())
         self.add_view(LeaderboardView())
-        await self.tree.sync(guild=discord.Object(id=int(GUILD_ID)))
 
 bot = FamilyBot()
 

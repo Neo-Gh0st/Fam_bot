@@ -31,7 +31,7 @@ ROLE_ORDER = [
     RoleInfo('High Rank', 1531246359729016968, '🌟'),
     RoleInfo('Medium Rank', 1531246359729016966, '🔥'),
     RoleInfo('High VZP', 1531246359729016967, '⚔️'),
-    RoleInfo('VZP', 0, '🗡️'),
+    RoleInfo('VZP', 1532154724198125719, '🗡️'),
     RoleInfo('CENT', 1531764101901062256, '🌿', True),
 ]
 

@@ -30,7 +30,7 @@ ROLE_ORDER = [
     RoleInfo('Deputy Owner', 1531246359729016969, ''),
     RoleInfo('High Rank', 1531246359729016968, ''),
     RoleInfo('Medium Rank', 1531246359729016966, ''),
-    RoleInfo('High VZP', 1531246359729016967, ''),
+    RoleInfo('CENT', 1532160268363235438, '', True),
 ]
 
 RECRUIT_ROLE_ID = 1531246359712370817

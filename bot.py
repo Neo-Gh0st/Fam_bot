@@ -97,6 +97,10 @@ RECRUIT_APP_LIST_CHANNEL_ID = int(os.getenv('RECRUIT_APP_LIST_CHANNEL_ID', '0'))
 VERIFICATION_ROLE_ID = int(os.getenv('VERIFICATION_ROLE_ID', '1531246359674487039'))
 VERIFICATION_EMOJI = os.getenv('VERIFICATION_EMOJI', '✅')
 
+NVIDIA_API_KEY = os.getenv('NVIDIA_API_KEY')
+NVIDIA_API_URL = 'https://integrate.api.nvidia.com/v1/chat/completions'
+NVIDIA_MODEL = 'nvidia/ising-calibration-1.5-31b'
+
 if not BOT_TOKEN:
     raise SystemExit('Please set BOT_TOKEN in your .env file.')
 
@@ -888,7 +892,7 @@ class FamilyBot(commands.Bot):
         self.add_view(RecruitAppBannerView())
         self.add_view(AdminPanelView())
         self.add_view(LeaderboardView())
-        await self.tree.sync()
+        await self.tree.sync(guild=discord.Object(id=int(GUILD_ID)))
 
 bot = FamilyBot()
 
@@ -1741,7 +1745,7 @@ async def track_member_invite(member: discord.Member) -> None:
 
 @bot.event
 async def on_ready() -> None:
-    print(f'Logged in as {bot.user}')
+    print(f'Logged in as {bot.user.id}')
     for guild in bot.guilds:
         try:
             await update_invite_cache(guild)
@@ -2421,46 +2425,6 @@ async def clear(interaction: discord.Interaction, amount: int) -> None:
     ))
 
 
-# --------------- Slowmode ---------------
-
-@bot.tree.command(name='slowmode', description='Установить слоу-мод в канале')
-@app_commands.describe(seconds='Задержка в секундах (0 = выключить)')
-@app_commands.default_permissions(manage_channels=True)
-async def slowmode(interaction: discord.Interaction, seconds: int) -> None:
-    if seconds < 0 or seconds > 21600:
-        await interaction.response.send_message('Значение от 0 до 21600 секунд (6 часов).', ephemeral=True)
-        return
-
-    try:
-        await interaction.channel.edit(slowmode_delay=seconds)
-    except discord.Forbidden:
-        await interaction.response.send_message('Нет права **Управление каналами**.', ephemeral=True)
-        return
-
-    if seconds == 0:
-        text = '✅ Слоу-мод выключен.'
-    else:
-        m, s = divmod(seconds, 60)
-        h, m = divmod(m, 60)
-        if h:
-            text = f'✅ Слоу-мод: **{h}ч {m}м {s}с**'
-        elif m:
-            text = f'✅ Слоу-мод: **{m}м {s}с**'
-        else:
-            text = f'✅ Слоу-мод: **{s}с**'
-
-    await interaction.response.send_message(text, ephemeral=True)
-    asyncio.create_task(send_log(
-        '🐌 Слоу-мод',
-        fields=[
-            ('Модератор', _log_user_field(interaction.user), True),
-            ('Канал', _log_channel_field(interaction.channel), True),
-            ('Задержка', f'**{seconds}** сек', True),
-        ],
-        color=0xF59E0B, user=interaction.user,
-    ))
-
-
 # --------------- Nuke (clone & delete) ---------------
 
 class NukeConfirmView(discord.ui.View):
@@ -2521,91 +2485,6 @@ async def nuke(interaction: discord.Interaction) -> None:
     )
 
 
-# --------------- Embargo (temp ban) ---------------
-
-class EmbargoModal(discord.ui.Modal, title='⏳ Embargo (временный бан)'):
-    user_id_input = discord.ui.TextInput(label='ID пользователя', placeholder='926404329450143815')
-    duration_input = discord.ui.TextInput(label='Длительность', placeholder='1d, 7d, 24h, 30m', max_length=10)
-    reason_input = discord.ui.TextInput(label='Причина', placeholder='Нарушение правил', style=discord.TextStyle.paragraph, required=False)
-
-    async def on_submit(self, interaction: discord.Interaction):
-        if not interaction.user.guild_permissions.ban_members:
-            await interaction.response.send_message('Нет прав.', ephemeral=True)
-            return
-
-        try:
-            user_id = int(self.user_id_input.value.strip())
-        except ValueError:
-            await interaction.response.send_message('ID — число.', ephemeral=True)
-            return
-
-        duration_str = self.duration_input.value.strip().lower()
-        total_seconds = 0
-        try:
-            if 'd' in duration_str:
-                total_seconds = int(duration_str.replace('d', '')) * 86400
-            elif 'h' in duration_str:
-                total_seconds = int(duration_str.replace('h', '')) * 3600
-            elif 'm' in duration_str:
-                total_seconds = int(duration_str.replace('m', '')) * 60
-            else:
-                total_seconds = int(duration_str) * 86400
-        except ValueError:
-            await interaction.response.send_message('Неверный формат времени. Используй: `1d`, `24h`, `30m`', ephemeral=True)
-            return
-
-        if total_seconds < 60 or total_seconds > 2419200:
-            await interaction.response.send_message('Длительность от 1 минуты до 28 дней.', ephemeral=True)
-            return
-
-        reason = self.reason_input.value.strip() or f'Embargo by {interaction.user}'
-
-        try:
-            member = await interaction.guild.fetch_member(user_id)
-        except discord.NotFound:
-            await interaction.response.send_message('Участник не найден на сервере.', ephemeral=True)
-            return
-
-        try:
-            await member.ban(reason=reason, delete_message_days=0)
-        except discord.Forbidden:
-            await interaction.response.send_message('Нет права **Бан**.', ephemeral=True)
-            return
-
-        await interaction.response.send_message(
-            f'⏳ **Embargo** — {member.mention} забанен на **{duration_str}**\nПричина: {reason}',
-        )
-
-        asyncio.create_task(send_log(
-            '⏳ Embargo',
-            fields=[
-                ('Участник', _log_user_field(member), True),
-                ('Модератор', _log_user_field(interaction.user), True),
-                ('Длительность', f'**{duration_str}**', True),
-                ('Причина', reason, False),
-            ],
-            color=0xFF6600, user=member,
-        ))
-
-        # Автоматический разбан через asyncio
-        async def auto_unban(uid: int, guild_id: int, delay: int):
-            await asyncio.sleep(delay)
-            try:
-                g = bot.get_guild(guild_id)
-                if g:
-                    await g.unban(discord.Object(id=uid), reason='Embargo истёк')
-            except Exception:
-                pass
-
-        asyncio.create_task(auto_unban(user_id, interaction.guild.id, total_seconds))
-
-
-@bot.tree.command(name='embargo', description='Временный бан через UI')
-@app_commands.default_permissions(ban_members=True)
-async def embargo(interaction: discord.Interaction) -> None:
-    await interaction.response.send_modal(EmbargoModal())
-
-
 class AnnouncementModal(discord.ui.Modal, title='📢 Объявление'):
     title_input = discord.ui.TextInput(label='Заголовок', placeholder='Важное объявление', max_length=100)
     message_input = discord.ui.TextInput(label='Текст', style=discord.TextStyle.paragraph, placeholder='Напиши сообщение...')
@@ -2662,527 +2541,74 @@ class AnnouncementModal(discord.ui.Modal, title='📢 Объявление'):
 
 
 
-# --------------- Опросы ---------------
 
-@bot.tree.command(name='poll', description='Создать опрос')
-@app_commands.describe(question='Вопрос', options='Варианты через запятую (2-10)')
-@app_commands.default_permissions(manage_guild=True)
-async def poll(interaction: discord.Interaction, question: str, options: str):
-    opts = [o.strip() for o in options.split(',') if o.strip()]
-    if len(opts) < 2:
-        await interaction.response.send_message('Нужно минимум 2 варианта.', ephemeral=True)
-        return
-    if len(opts) > 10:
-        await interaction.response.send_message('Максимум 10 вариантов.', ephemeral=True)
+# --------------- AI (NVIDIA API) ---------------
+
+@bot.tree.command(name='ai', description='Задать вопрос AI')
+@app_commands.describe(question='Ваш вопрос')
+async def ai_cmd(interaction: discord.Interaction, question: str) -> None:
+    if not NVIDIA_API_KEY:
+        await interaction.response.send_message('AI не настроен (нет API ключа).', ephemeral=True)
         return
 
-    emojis = ['1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟']
-    lines = [f'{emojis[i]} {opt}' for i, opt in enumerate(opts)]
+    await interaction.response.defer(thinking=True)
 
-    embed = discord.Embed(
-        title=f'📊 {question}',
-        description='\n'.join(lines),
-        color=0x3B82F6,
-        timestamp=discord.utils.utcnow(),
-    )
-    embed.set_footer(text=f'Опрос от {interaction.user.display_name}')
+    headers = {
+        'Authorization': f'Bearer {NVIDIA_API_KEY}',
+        'Content-Type': 'application/json',
+    }
+    payload = {
+        'model': NVIDIA_MODEL,
+        'messages': [{'role': 'user', 'content': question}],
+        'max_tokens': 1024,
+        'temperature': 0.7,
+        'top_p': 0.9,
+        'stream': False,
+    }
 
-    await interaction.response.send_message(embed=embed)
-    msg = await interaction.original_response()
-    for i in range(len(opts)):
-        await msg.add_reaction(emojis[i])
-
-    asyncio.create_task(send_log(
-        '📊 Опрос',
-        fields=[
-            ('Модератор', _log_user_field(interaction.user), True),
-            ('Канал', _log_channel_field(interaction.channel), True),
-            ('Вопрос', question, False),
-            ('Варианты', '\n'.join(f'{emojis[i]} {o}' for i, o in enumerate(opts)), False),
-        ],
-        color=0x3B82F6, user=interaction.user,
-    ))
-
-
-# --------------- Запланированные сообщения ---------------
-
-scheduled_tasks: list[asyncio.Task] = []
-SCHEDULE_STATE_FILE = Path(__file__).with_name('schedule-state.json')
-
-def read_schedule_state() -> dict:
-    state = read_json(SCHEDULE_STATE_FILE)
-    state.setdefault('scheduled', [])
-    return state
-
-def write_schedule_state(data: dict) -> None:
-    write_json(SCHEDULE_STATE_FILE, data)
-
-
-async def restore_scheduled_tasks() -> None:
-    """Восстанавливает запланированные задачи из state-файла после перезапуска."""
-    state = read_schedule_state()
-    now = discord.utils.utcnow()
-    repeat_labels = {'none': 'без повтора', 'daily': 'ежедневно', 'weekly': 'еженедельно', 'monthly': 'ежемесячно'}
-    repeat_intervals = {'daily': 86400, 'weekly': 604800, 'monthly': 2592000}
-
-    remaining = []
-    for entry in state.get('scheduled', []):
-        try:
-            send_at = datetime.fromisoformat(entry['send_at'])
-        except Exception:
-            continue
-
-        delay = (send_at - now).total_seconds()
-
-        if delay > 0:
-            # Пробуем найти канал через fetch (надёжнее чем get_channel)
-            ch = bot.get_channel(entry['channel_id'])
-            if not ch:
-                try:
-                    ch = await bot.fetch_channel(entry['channel_id'])
-                except Exception:
-                    print(f'[SCHEDULE] Cannot fetch channel {entry["channel_id"]}')
-                    remaining.append(entry)
-                    continue
-
-            if not isinstance(ch, discord.TextChannel):
-                remaining.append(entry)
-                continue
-
-            msg = entry['message']
-            rep = entry.get('repeat', 'none')
-
-            async def _make_task(channel, message, wait, repeat_type):
-                await asyncio.sleep(wait)
-                embed = discord.Embed(description=message, color=0xF59E0B, timestamp=discord.utils.utcnow())
-                embed.set_thumbnail(url=THUMBNAIL_URL)
-                embed.set_footer(text=f'Запланированное • {repeat_labels.get(repeat_type, "")}')
-                try:
-                    await channel.send(embed=embed)
-                    print(f'[SCHEDULE] Sent restored message to #{channel.name}')
-                except Exception as exc:
-                    print(f'[SCHEDULE] Restored task send FAILED: {exc}')
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(NVIDIA_API_URL, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                if resp.status != 200:
+                    text = await resp.text()
+                    await interaction.followup.send(f'Ошибка API ({resp.status}): {text[:500]}', ephemeral=True)
                     return
-                if repeat_type != 'none' and repeat_type in repeat_intervals:
-                    async def _rep(ch, msg, interval, rep):
-                        while True:
-                            await asyncio.sleep(interval)
-                            e = discord.Embed(description=msg, color=0xF59E0B, timestamp=discord.utils.utcnow())
-                            e.set_thumbnail(url=THUMBNAIL_URL)
-                            e.set_footer(text=f'Повтор • {repeat_labels.get(rep, "")}')
-                            try:
-                                await ch.send(embed=e)
-                            except Exception:
-                                break
-                    task = asyncio.create_task(_rep(ch, message, repeat_intervals[repeat_type], repeat_type))
-                    scheduled_tasks.append(task)
+                data = await resp.json()
 
-            print(f'[SCHEDULE] Restoring: "{_truncate(msg, 30)}" -> #{ch.name} in {int(delay)}s')
-            task = asyncio.create_task(_make_task(ch, msg, delay, rep))
-            scheduled_tasks.append(task)
-            remaining.append(entry)
-        elif entry.get('repeat', 'none') != 'none':
-            remaining.append(entry)
-
-    state['scheduled'] = remaining
-    write_schedule_state(state)
-    print(f'[SCHEDULE] Restored {len(scheduled_tasks)} tasks')
-
-
-REPEAT_OPTIONS = [
-    app_commands.Choice(name='Без повтора', value='none'),
-    app_commands.Choice(name='Ежедневно', value='daily'),
-    app_commands.Choice(name='Еженедельно', value='weekly'),
-    app_commands.Choice(name='Ежемесячно', value='monthly'),
-]
-
-
-class ScheduleModal(discord.ui.Modal, title='⏰ Запланировать сообщение'):
-    msg_text = discord.ui.TextInput(
-        label='Текст сообщения',
-        style=discord.TextStyle.paragraph,
-        placeholder='Напиши сообщение...',
-        max_length=2000,
-    )
-    date_time = discord.ui.TextInput(
-        label='Дата и время',
-        placeholder='15.07.2026 18:00 ИЛИ 30m / 2h / 3d / 1w',
-        max_length=30,
-    )
-    repeat = discord.ui.TextInput(
-        label='Повтор (необязательно)',
-        placeholder='none / daily / weekly / monthly',
-        required=False,
-        max_length=10,
-    )
-    channel_id = discord.ui.TextInput(
-        label='ID канала (необязательно)',
-        placeholder='Оставь пустым = текущий канал',
-        required=False,
-        max_length=20,
-    )
-
-    async def on_submit(self, interaction: discord.Interaction):
-        if not interaction.user.guild_permissions.manage_guild:
-            await interaction.response.send_message('Нет прав.', ephemeral=True)
+        answer = data.get('choices', [{}])[0].get('message', {}).get('content', '')
+        if not answer:
+            await interaction.followup.send('AI не вернул ответ.', ephemeral=True)
             return
 
-        # --- Канал ---
-        if self.channel_id.value:
-            try:
-                ch_id = int(self.channel_id.value.strip())
-            except ValueError:
-                await interaction.response.send_message('ID канала — число.', ephemeral=True)
-                return
-            channel = interaction.guild.get_channel(ch_id)
-            if not channel or not isinstance(channel, discord.TextChannel):
-                await interaction.response.send_message('Текстовый канал не найден.', ephemeral=True)
-                return
-        else:
-            channel = interaction.channel
+        if len(answer) > 3900:
+            answer = answer[:3900] + '\n\n... (ответ обрезан)'
 
-        # --- Парсим время ---
-        now = discord.utils.utcnow()
-        time_str = self.date_time.value.strip()
-        send_at = None
-        delay_seconds = None
-        time_label = ''
-
-        # Относительное: 30m / 2h / 3d / 1w
-        relative_patterns = [
-            (r'^(\d+)\s*(?:m|min|мин|минут)$', lambda v: timedelta(minutes=v), 'мин'),
-            (r'^(\d+)\s*(?:h|hr|ч|час(?:а|ов)?)$', lambda v: timedelta(hours=v), 'час'),
-            (r'^(\d+)\s*(?:d|д|день|дня|дней)$', lambda v: timedelta(days=v), 'дн'),
-            (r'^(\d+)\s*(?:w|н|недел[яьи]|недель)$', lambda v: timedelta(weeks=v), 'нед'),
-        ]
-
-        for pattern, calc, label in relative_patterns:
-            match = re.match(pattern, time_str.lower())
-            if match:
-                val = int(match.group(1))
-                delay = calc(val)
-                send_at = now + delay
-                delay_seconds = int(delay.total_seconds())
-                time_label = f'через **{val}** {label}'
-                break
-
-        # Абсолютное: 15.07.2026 18:00
-        if send_at is None:
-            from datetime import timezone
-            is_MSK = time_str.upper().endswith(' MSK') or time_str.upper().endswith(' МСК')
-            clean_time = re.sub(r'\s*(MSK|МСК)\s*$', '', time_str, flags=re.I).strip()
-
-            for fmt in ('%d.%m.%Y %H:%M', '%d.%m.%Y %H:%M:%S', '%d.%m %H:%M'):
-                try:
-                    parsed = datetime.strptime(clean_time, fmt)
-                    if parsed.year == 1900:
-                        parsed = parsed.replace(year=now.year)
-                    if is_MSK:
-                        send_at = parsed.replace(tzinfo=timezone(timedelta(hours=3)))
-                        time_label = f'**{send_at.strftime("%d.%m.%Y %H:%M")}** МСК'
-                    else:
-                        send_at = parsed.replace(tzinfo=timezone.utc)
-                        time_label = f'**{send_at.strftime("%d.%m.%Y %H:%M")}** UTC'
-                    delay_seconds = int((send_at - now).total_seconds())
-                    break
-                except ValueError:
-                    continue
-
-        if send_at is None or delay_seconds is None or delay_seconds < 0:
-            await interaction.response.send_message(
-                '❌ Не понял время.\n'
-                'Форматы: `30m` `2h` `3d` `1w` `15.07.2026 18:00`',
-                ephemeral=True,
-            )
-            return
-
-        # --- Повтор ---
-        repeat_val = (self.repeat.value or 'none').strip().lower()
-        if repeat_val not in ('none', 'daily', 'weekly', 'monthly'):
-            repeat_val = 'none'
-        repeat_labels = {'none': 'без повтора', 'daily': 'ежедневно', 'weekly': 'еженедельно', 'monthly': 'ежемесячно'}
-
-        # --- Сохраняем ---
-        entry = {
-            'message': self.msg_text.value,
-            'channel_id': channel.id,
-            'send_at': send_at.isoformat(),
-            'repeat': repeat_val,
-            'created_by': interaction.user.id,
-            'created_at': now.isoformat(),
-        }
-
-        async with bot.refresh_lock:
-            state = read_schedule_state()
-            state['scheduled'].append(entry)
-            write_schedule_state(state)
-
-        # --- Ответ ---
-        await interaction.response.send_message(
-            f'✅ Сообщение запланировано!\n'
-            f'📅 **{time_label}**\n'
-            f'📍 {channel.mention}\n'
-            f'🔁 {repeat_labels[repeat_val]}',
-            ephemeral=True,
+        embed = discord.Embed(
+            title='🤖 Вопрос AI',
+            description=f'**Вопрос:** {question[:500]}\n\n**Ответ:**\n{answer}',
+            color=0x8B5CF6,
+            timestamp=discord.utils.utcnow(),
         )
+        embed.set_footer(text=f'{interaction.user.display_name}', icon_url=interaction.user.display_avatar.url if interaction.user.display_avatar else None)
+        embed.set_thumbnail(url=THUMBNAIL_URL)
+
+        await interaction.followup.send(embed=embed)
 
         asyncio.create_task(send_log(
-            '⏰ Запланировано сообщение',
+            '🤖 AI-запрос',
             fields=[
-                ('Модератор', _log_user_field(interaction.user), True),
-                ('Канал', _log_channel_field(channel), True),
-                ('Отправка', time_label, True),
-                ('Повтор', repeat_labels[repeat_val], True),
-                ('Текст', _truncate(self.msg_text.value), False),
+                ('Участник', _log_user_field(interaction.user), True),
+                ('Вопрос', _truncate(question, 200), False),
+                ('Длина ответа', f'{len(answer)} символов', True),
             ],
-            color=0x3B82F6, user=interaction.user,
+            color=0x8B5CF6, user=interaction.user,
         ))
 
-        # --- Запуск задачи ---
-        ch_ref = channel
-        msg_ref = self.msg_text.value
-        rep_ref = repeat_val
-
-        async def _send_once():
-            await asyncio.sleep(delay_seconds)
-            embed = discord.Embed(description=msg_ref, color=0xF59E0B, timestamp=discord.utils.utcnow())
-            embed.set_thumbnail(url=THUMBNAIL_URL)
-            embed.set_footer(text=f'Запланированное сообщение • {repeat_labels[rep_ref]}')
-            try:
-                await ch_ref.send(embed=embed)
-            except Exception as exc:
-                print(f'[SCHEDULE] Send failed: {exc}')
-                return
-            if rep_ref != 'none':
-                intervals = {'daily': 86400, 'weekly': 604800, 'monthly': 2592000}
-                task = asyncio.create_task(_repeat_send(ch_ref, msg_ref, intervals[rep_ref], rep_ref))
-                scheduled_tasks.append(task)
-
-        async def _repeat_send(ch, msg, interval, rep):
-            while True:
-                await asyncio.sleep(interval)
-                embed = discord.Embed(description=msg, color=0xF59E0B, timestamp=discord.utils.utcnow())
-                embed.set_thumbnail(url=THUMBNAIL_URL)
-                embed.set_footer(text=f'Повтор • {repeat_labels[rep]}')
-                try:
-                    await ch.send(embed=embed)
-                except Exception:
-                    break
-
-        task = asyncio.create_task(_send_once())
-        scheduled_tasks.append(task)
-
-
-@bot.tree.command(name='schedule', description='Запланировать сообщение')
-@app_commands.default_permissions(manage_guild=True)
-async def schedule_cmd(interaction: discord.Interaction) -> None:
-    if not interaction.user.guild_permissions.manage_guild:
-        await interaction.response.send_message('Нет прав.', ephemeral=True)
-        return
-    await interaction.response.send_modal(ScheduleModal())
-
-
-@bot.tree.command(name='schedules', description='Показать запланированные сообщения')
-@app_commands.default_permissions(manage_guild=True)
-async def schedules_cmd(interaction: discord.Interaction) -> None:
-    state = read_schedule_state()
-    scheduled = state.get('scheduled', [])
-
-    if not scheduled:
-        await interaction.response.send_message('📋 Нет запланированных сообщений.', ephemeral=True)
-        return
-
-    lines = []
-    repeat_labels = {'none': '—', 'daily': 'ежедн.', 'weekly': 'еженед.', 'monthly': 'ежемес.'}
-    for i, entry in enumerate(scheduled, 1):
-        ch = interaction.guild.get_channel(entry['channel_id'])
-        ch_name = ch.mention if ch else f'ID:{entry["channel_id"]}'
-        rep = repeat_labels.get(entry.get('repeat', 'none'), '—')
-        lines.append(f'**{i}.** {_truncate(entry["message"], 40)} → {ch_name} | `{rep}`')
-
-    embed = discord.Embed(title='📋 Запланированные сообщения', description='\n'.join(lines[:20]), color=0x3B82F6)
-    embed.set_footer(text=f'Всего: {len(scheduled)}')
-    await interaction.response.send_message(embed=embed, ephemeral=True)
-
-
-class ScheduleCancelSelect(discord.ui.Select):
-    def __init__(self, scheduled: list[dict], guild: discord.Guild):
-        options = []
-        for i, entry in enumerate(scheduled[:25]):
-            ch = guild.get_channel(entry['channel_id'])
-            ch_name = ch.name if ch else '???'
-            repeat_labels = {'none': '', 'daily': ' 🔄дн', 'weekly': ' 🔄нед', 'monthly': ' 🔄мес'}
-            rep = repeat_labels.get(entry.get('repeat', 'none'), '')
-            label = _truncate(entry['message'], 80)
-            options.append(discord.SelectOption(
-                label=label,
-                description=f'#{ch_name}{rep}',
-                value=str(i),
-            ))
-        super().__init__(placeholder='Выбери сообщение для отмены...', options=options)
-
-    async def callback(self, interaction: discord.Interaction):
-        idx = int(self.values[0])
-        state = read_schedule_state()
-        scheduled = state.get('scheduled', [])
-
-        if idx >= len(scheduled):
-            await interaction.response.send_message('Сообщение уже удалено.', ephemeral=True)
-            return
-
-        removed = scheduled.pop(idx)
-        async with bot.refresh_lock:
-            state['scheduled'] = scheduled
-            write_schedule_state(state)
-
-        await interaction.response.edit_message(
-            content=f'❌ Отменено: **{_truncate(removed["message"], 60)}**',
-            view=None,
-        )
-
-        asyncio.create_task(send_log(
-            '❌ Отменено запланированное',
-            fields=[('Модератор', _log_user_field(interaction.user), True), ('Текст', _truncate(removed['message']), False)],
-            color=0xEF4444, user=interaction.user,
-        ))
-
-
-class ScheduleCancelView(discord.ui.View):
-    def __init__(self, scheduled: list[dict], guild: discord.Guild):
-        super().__init__(timeout=60)
-        self.add_item(ScheduleCancelSelect(scheduled, guild))
-
-
-@bot.tree.command(name='schedule_cancel', description='Отменить запланированное сообщение')
-@app_commands.default_permissions(manage_guild=True)
-async def schedule_cancel_cmd(interaction: discord.Interaction) -> None:
-    state = read_schedule_state()
-    scheduled = state.get('scheduled', [])
-
-    if not scheduled:
-        await interaction.response.send_message('📋 Нет запланированных сообщений.', ephemeral=True)
-        return
-
-    view = ScheduleCancelView(scheduled, interaction.guild)
-    await interaction.response.send_message('Выбери сообщение для отмены:', view=view, ephemeral=True)
-
-
-# --------------- Авто-правила ---------------
-
-RULES_STATE_FILE = Path(__file__).with_name('rules-state.json')
-
-def read_rules_state() -> dict:
-    state = read_json(RULES_STATE_FILE)
-    state.setdefault('rules', [
-        '1. Уважай других участников — оскорбления и травля запрещены.',
-        '2. Запрещён мат, спам и флуд.',
-        '3. Нельзя рекламовать другие серверы и ссылки.',
-        '4. Используй каналы по назначению.',
-        '5. Слушай администрацию и модераторов.',
-        '6. Запрещены NSFW контент и насилие.',
-        '7. Не создавай фейковые аккаунты.',
-        '8. Нарушение = предупреждение, повтор = мут/бан.',
-    ])
-    state.setdefault('message_id', None)
-    return state
-
-def write_rules_state(data: dict) -> None:
-    write_json(RULES_STATE_FILE, data)
-
-
-@bot.tree.command(name='rules', description='Показать правила сервера')
-async def rules_cmd(interaction: discord.Interaction) -> None:
-    state = read_rules_state()
-    rules_text = '\n\n'.join(state['rules'])
-
-    embed = discord.Embed(
-        title='📜 Правила сервера',
-        description=rules_text,
-        color=0xF59E0B,
-        timestamp=discord.utils.utcnow(),
-    )
-    embed.set_thumbnail(url=THUMBNAIL_URL)
-    embed.set_footer(text='Незнание правил не освобождает от ответственности')
-
-    await interaction.response.send_message(embed=embed)
-
-@bot.tree.command(name='setrules', description='Установить правила сервера')
-@app_commands.describe(rules='Правила через ; (каждое правило через точку с запятой)')
-@app_commands.default_permissions(manage_guild=True)
-async def setrules_cmd(interaction: discord.Interaction, rules: str) -> None:
-    rules_list = [r.strip() for r in rules.split(';') if r.strip()]
-    if len(rules_list) < 1:
-        await interaction.response.send_message('Нужно минимум 1 правило.', ephemeral=True)
-        return
-
-    # Нумеруем правила
-    numbered = [f'{i+1}. {r}' for i, r in enumerate(rules_list)]
-
-    async with bot.refresh_lock:
-        state = read_rules_state()
-        state['rules'] = numbered
-        write_rules_state(state)
-
-    rules_text = '\n\n'.join(numbered)
-    embed = discord.Embed(
-        title='📜 Правила сервера',
-        description=rules_text,
-        color=0xF59E0B,
-        timestamp=discord.utils.utcnow(),
-    )
-    embed.set_thumbnail(url=THUMBNAIL_URL)
-    embed.set_footer(text='Незнание правил не освобождает от ответственности')
-
-    await interaction.response.send_message(embed=embed)
-
-    asyncio.create_task(send_log(
-        '📜 Правила обновлены',
-        fields=[
-            ('Модератор', _log_user_field(interaction.user), True),
-            ('Правил', f'**{len(numbered)}**', True),
-        ],
-        color=0xF59E0B, user=interaction.user,
-    ))
-
-
-# --------------- Статистика ---------------
-
-@bot.tree.command(name='stats', description='Показать статистику сервера')
-async def stats_cmd(interaction: discord.Interaction) -> None:
-    guild = interaction.guild
-    if not guild:
-        return
-
-    online = sum(1 for m in guild.members if m.status != discord.Status.offline)
-    bots = sum(1 for m in guild.members if m.bot)
-    humans = guild.member_count - bots
-    text_channels = len(guild.text_channels)
-    voice_channels = len(guild.voice_channels)
-    roles = len(guild.roles) - 1  # minus @everyone
-    boost = guild.premium_subscription_count or 0
-
-    state = read_stats_state()
-    total_messages = sum(state.get('messages', {}).values())
-    total_voice = sum(state.get('voice', {}).values())
-
-    embed = discord.Embed(
-        title=f'📊 Статистика {guild.name}',
-        color=0x3B82F6,
-        timestamp=discord.utils.utcnow(),
-    )
-    if guild.icon:
-        embed.set_thumbnail(url=guild.icon.url)
-
-    embed.add_field(name='👥 Участники', value=f'Всего: **{guild.member_count}**\nЛюдей: **{humans}**\nБотов: **{bots}**\nОнлайн: **{online}**', inline=True)
-    embed.add_field(name='📁 Каналы', value=f'Текстовых: **{text_channels}**\nГолосовых: **{voice_channels}**', inline=True)
-    embed.add_field(name='🏷️ Роли', value=f'**{roles}**', inline=True)
-    embed.add_field(name='🚀 Бусты', value=f'**{boost}**', inline=True)
-    embed.add_field(name='📝 Сообщений (всего)', value=f'**{total_messages:,}**', inline=True)
-    embed.add_field(name='🔊 Голос (всего)', value=format_voice_time(total_voice), inline=True)
-
-    embed.set_footer(text=f'ID: {guild.id}')
-
-    await interaction.response.send_message(embed=embed)
+    except asyncio.TimeoutError:
+        await interaction.followup.send('AI не ответил (таймаут 30 сек).', ephemeral=True)
+    except Exception as exc:
+        await interaction.followup.send(f'Ошибка: {exc}', ephemeral=True)
+        print(f'[AI ERROR] {exc}')
 
 
 # --------------- Анти-рейд ---------------

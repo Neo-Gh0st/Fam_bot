@@ -76,6 +76,7 @@ ADMIN_REMIND_1H_BUTTON_ID = 'admin_remind_1h'
 ANNOUNCEMENT_BUTTON_ID = 'admin_announcement'
 LEADERBOARD_PREV_BUTTON_ID = 'leaderboard_prev'
 LEADERBOARD_NEXT_BUTTON_ID = 'leaderboard_next'
+BLACKLIST_BUTTON_ID = 'blacklist_add'
 
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 CLIENT_ID = os.getenv('CLIENT_ID')
@@ -96,6 +97,9 @@ RECRUIT_APP_BANNER_CHANNEL_ID = int(os.getenv('RECRUIT_APP_BANNER_CHANNEL_ID', '
 RECRUIT_APP_LIST_CHANNEL_ID = int(os.getenv('RECRUIT_APP_LIST_CHANNEL_ID', '0'))
 VERIFICATION_ROLE_ID = int(os.getenv('VERIFICATION_ROLE_ID', '1531246359674487039'))
 VERIFICATION_EMOJI = os.getenv('VERIFICATION_EMOJI', '✅')
+
+BLACKLIST_CHANNEL_ID = int(os.getenv('BLACKLIST_CHANNEL_ID', '1531246362274955373'))
+BLACKLIST_STATE_FILE = Path(__file__).with_name('blacklist-state.json')
 
 NVIDIA_API_KEY = os.getenv('NVIDIA_API_KEY')
 NVIDIA_API_URL = 'https://integrate.api.nvidia.com/v1/chat/completions'
@@ -206,6 +210,54 @@ class BirthdayButtonView(discord.ui.View):
     @discord.ui.button(label='Добавить дату', style=discord.ButtonStyle.primary, emoji='🎂', custom_id=BIRTHDAY_SUBMIT_BUTTON_ID)
     async def add_birthday_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         await interaction.response.send_modal(BirthdayModal())
+
+
+class BlacklistModal(discord.ui.Modal, title='Добавить в чёрный список'):
+    nickname = discord.ui.TextInput(
+        label='Ник человека',
+        placeholder='Например: @username или никнейм',
+        max_length=100,
+    )
+    reason = discord.ui.TextInput(
+        label='Причина',
+        placeholder='Укажите причину добавления',
+        style=discord.TextStyle.paragraph,
+        max_length=500,
+    )
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        channel = await get_text_channel(BLACKLIST_CHANNEL_ID)
+        embed = discord.Embed(
+            title='🚫 Чёрный список',
+            color=0xEF4444,
+            timestamp=discord.utils.utcnow(),
+        )
+        embed.add_field(name='Ник', value=str(self.nickname), inline=True)
+        embed.add_field(name='Причина', value=str(self.reason), inline=False)
+        embed.set_thumbnail(url=THUMBNAIL_URL)
+        embed.set_footer(text=f'Добавлено: {interaction.user.display_name}', icon_url=interaction.user.display_avatar.url if interaction.user.display_avatar else None)
+
+        await channel.send(embed=embed)
+        await interaction.response.send_message('Участник добавлен в чёрный список.', ephemeral=True)
+        asyncio.create_task(send_log(
+            '🚫 Добавлен в чёрный список',
+            fields=[
+                ('Ник', str(self.nickname), True),
+                ('Причина', str(self.reason), False),
+                ('Добавил', _log_user_field(interaction.user), True),
+            ],
+            color=0xEF4444, user=interaction.user,
+        ))
+
+
+class BlacklistView(discord.ui.View):
+    def __init__(self) -> None:
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label='Добавить в чёрный список', style=discord.ButtonStyle.danger, emoji='🚫', custom_id='blacklist_add')
+    async def blacklist_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        await interaction.response.send_modal(BlacklistModal())
+
 
 class RecruitReportButtonView(discord.ui.View):
     def __init__(self) -> None:
@@ -887,6 +939,7 @@ class FamilyBot(commands.Bot):
         self.add_view(RecruitView())
         self.add_view(RecruitReportButtonView())
         self.add_view(BirthdayButtonView())
+        self.add_view(BlacklistView())
         self.add_view(ApplicationCreateView())
         self.add_view(TicketAdminView())
         self.add_view(RecruitAppBannerView())
@@ -1254,8 +1307,9 @@ async def build_recruit_payload(guild: discord.Guild) -> tuple[discord.Embed, di
     if len(description) > 3900:
         description = description[:3900] + '\n\nСписок слишком длинный, часть рекрутов скрыта.'
 
-    embed = discord.Embed(title='🪖 Рекруты и приглашения', description=description, color=0x22C55E)
+    embed = discord.Embed(title='🪖 Рекруты и приглашения', description=description, color=0x00E3FF)
     embed.set_thumbnail(url=THUMBNAIL_URL)
+    embed.set_image(url=MAIN_IMAGE_URL)
     embed.set_footer(text='Кнопка создаёт одну вечную ссылку. Поменять её после создания нельзя.')
     embed.timestamp = discord.utils.utcnow()
     return embed, RecruitView()
@@ -1503,6 +1557,50 @@ async def refresh_recruit_board_safely() -> None:
         print(f'Recruit board refresh failed: {exc}')
         asyncio.create_task(send_log('❌ Ошибка обновления рекрутов', f'```{traceback.format_exc()[-1500:]}```', color=0xEF4444))
 
+
+async def refresh_blacklist_message() -> None:
+    channel = await get_text_channel(BLACKLIST_CHANNEL_ID)
+    embed = discord.Embed(
+        title='🚫 Чёрный список CENT Family',
+        description='Нажми кнопку ниже, чтобы добавить участника в чёрный список.',
+        color=0xEF4444,
+    )
+    embed.set_thumbnail(url=THUMBNAIL_URL)
+    embed.set_footer(text='Форма доступна всем участникам')
+    view = BlacklistView()
+
+    state = read_json(BLACKLIST_STATE_FILE)
+    message = None
+    if state.get('message_id'):
+        try:
+            message = await channel.fetch_message(int(state['message_id']))
+        except Exception:
+            message = None
+    if message is None:
+        try:
+            async for msg in channel.history(limit=50, oldest_first=False):
+                if msg.author == bot.user and msg.embeds and msg.embeds[0].title == embed.title:
+                    message = msg
+                    break
+        except Exception:
+            pass
+    if message is None:
+        message = await channel.send(embed=embed, view=view)
+    else:
+        await message.edit(embed=embed, view=view)
+    write_json(BLACKLIST_STATE_FILE, {
+        'message_id': message.id,
+        'channel_id': channel.id,
+        'updated_at': discord.utils.utcnow().isoformat(),
+    })
+
+
+async def refresh_blacklist_safely() -> None:
+    try:
+        await refresh_blacklist_message()
+    except Exception as exc:
+        print(f'Blacklist refresh failed: {exc}')
+        asyncio.create_task(send_log('❌ Ошибка обновления чёрного списка', f'```{traceback.format_exc()[-1500:]}```', color=0xEF4444))
 
 
 
@@ -1761,7 +1859,7 @@ async def on_ready() -> None:
     asyncio.create_task(refresh_application_board_safely())
     asyncio.create_task(refresh_recruit_app_banner_safely())
     asyncio.create_task(refresh_admin_panel_safely())
-    await restore_scheduled_tasks()
+    asyncio.create_task(refresh_blacklist_safely())
     await send_log(
         '🟢 Бот запущен',
         f'**{bot.user}** успешно подключился\n'

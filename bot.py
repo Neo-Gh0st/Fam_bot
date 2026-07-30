@@ -99,6 +99,8 @@ VERIFICATION_EMOJI = os.getenv('VERIFICATION_EMOJI', '✅')
 BLACKLIST_CHANNEL_ID = int(os.getenv('BLACKLIST_CHANNEL_ID', '1531246362274955373'))
 BLACKLIST_STATE_FILE = Path(__file__).with_name('blacklist-state.json')
 
+MOD_CHANNEL_ID = int(os.getenv('MOD_CHANNEL_ID', '1531246360895033543'))
+
 NVIDIA_API_KEY = os.getenv('NVIDIA_API_KEY')
 NVIDIA_API_URL = 'https://integrate.api.nvidia.com/v1/chat/completions'
 NVIDIA_MODEL = 'nvidia/ising-calibration-1.5-31b'
@@ -337,6 +339,71 @@ class BlacklistView(discord.ui.View):
     @discord.ui.button(label='Добавить в чёрный список', style=discord.ButtonStyle.danger, emoji='🚫', custom_id='blacklist_add')
     async def blacklist_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         await interaction.response.send_modal(BlacklistSearchModal())
+
+
+class ModPublishModal(discord.ui.Modal, title='Публикация редукса / ганпака'):
+    mod_title = discord.ui.TextInput(
+        label='Название',
+        placeholder='Например: BLACK KILLA GUNPACK',
+        max_length=100,
+    )
+    mod_description = discord.ui.TextInput(
+        label='Описание',
+        placeholder='Список изменений, замен и т.д.',
+        style=discord.TextStyle.paragraph,
+        max_length=2000,
+    )
+    mod_download = discord.ui.TextInput(
+        label='Ссылка на скачивание',
+        placeholder='https://...',
+        max_length=300,
+    )
+    mod_image = discord.ui.TextInput(
+        label='Ссылка на изображение',
+        placeholder='https://... (необязательно)',
+        required=False,
+        max_length=300,
+    )
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        channel = await get_text_channel(MOD_CHANNEL_ID)
+        embed = discord.Embed(
+            title=str(self.mod_title),
+            description=str(self.mod_description),
+            color=0x00E3FF,
+        )
+        embed.set_thumbnail(url=THUMBNAIL_URL)
+        if str(self.mod_image).strip():
+            embed.set_image(url=str(self.mod_image).strip())
+        embed.set_footer(text=f'Опубликовано: {interaction.user.display_name}', icon_url=interaction.user.display_avatar.url if interaction.user.display_avatar else None)
+        embed.timestamp = discord.utils.utcnow()
+
+        view = discord.ui.View()
+        view.add_item(discord.ui.Button(
+            label='DOWNLOAD',
+            style=discord.ButtonStyle.link,
+            url=str(self.mod_download).strip(),
+        ))
+
+        await channel.send(embed=embed, view=view)
+        await interaction.response.send_message(f'Опубликовано в <#{MOD_CHANNEL_ID}>.', ephemeral=True)
+        asyncio.create_task(send_log(
+            '🔫 Опубликован редукс/ганпак',
+            fields=[
+                ('Название', str(self.mod_title), True),
+                ('Автор', _log_user_field(interaction.user), True),
+            ],
+            color=0x00E3FF, user=interaction.user,
+        ))
+
+
+class ModPublishView(discord.ui.View):
+    def __init__(self) -> None:
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label='Опубликовать мод', style=discord.ButtonStyle.primary, emoji='🔫', custom_id='mod_publish')
+    async def mod_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        await interaction.response.send_modal(ModPublishModal())
 
 
 class RecruitReportButtonView(discord.ui.View):
@@ -2567,6 +2634,21 @@ async def admin_panel(interaction: discord.Interaction) -> None:
     await interaction.response.send_message('Обновляю панель управления.', ephemeral=True)
     asyncio.create_task(send_log('⚙️ Команда /admin_panel', f'{interaction.user.mention} обновил панель управления', color=0xEF4444, user=interaction.user))
     asyncio.create_task(refresh_admin_panel_safely())
+
+@bot.tree.command(name='mod_panel', description='Отправить кнопку публикации редукса/ганпака в канал')
+@app_commands.default_permissions(manage_guild=True)
+async def mod_panel(interaction: discord.Interaction) -> None:
+    if not isinstance(interaction.channel, discord.TextChannel):
+        await interaction.response.send_message('Используйте в текстовом канале.', ephemeral=True)
+        return
+    embed = discord.Embed(
+        title='🔫 Редуксы и Ганпаки',
+        description='Нажмите на кнопку ниже чтобы опубликовать редукс или ганпак.',
+        color=0x00E3FF,
+    )
+    embed.set_thumbnail(url=THUMBNAIL_URL)
+    await interaction.channel.send(embed=embed, view=ModPublishView())
+    await interaction.response.send_message('Кнопка опубликована.', ephemeral=True)
 
 @bot.tree.command(name='clear', description='Удалить сообщения из канала')
 @app_commands.describe(amount='Количество сообщений для удаления (1-100)')

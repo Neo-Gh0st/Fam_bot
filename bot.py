@@ -1989,6 +1989,11 @@ async def on_ready() -> None:
         except Exception as exc:
             print(f'Invite cache failed for {guild}: {exc}')
     try:
+        synced = await bot.tree.sync()
+        print(f'Synced {len(synced)} commands')
+    except Exception as exc:
+        print(f'Command sync failed: {exc}')
+    try:
         if not auto_refresh.is_running():
             auto_refresh.start()
     except Exception as exc:

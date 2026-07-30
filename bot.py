@@ -1279,44 +1279,26 @@ async def create_or_get_recruit_invite(member: discord.Member) -> dict:
         return record
 
 async def build_recruit_payload(guild: discord.Guild) -> tuple[discord.Embed, discord.ui.View]:
-    state = read_recruit_state()
     all_members = await fetch_guild_members(guild)
     recruits = sort_members(filter_members_by_role(all_members, RECRUIT_ROLE_ID))
-
-    try:
-        invites = await fetch_invites(guild)
-    except Exception as exc:
-        invites = {}
-        print(f'Could not fetch invites for recruit board: {exc}')
+    count = len(recruits)
 
     lines = []
-    changed = False
     for member in recruits:
-        record = state['recruits'].get(str(member.id), {})
-        code = record.get('invite_code')
-        if code and code in invites:
-            uses = invites[code].uses or 0
-            if uses > int(record.get('accepted_count', 0)):
-                record['accepted_count'] = uses
-                state['recruits'][str(member.id)] = record
-                changed = True
-        count = int(record.get('accepted_count', 0))
-        url = record.get('invite_url', 'ещё не создана')
-        lines.append(f'**{member.display_name}**\nПринял людей: **{count}**\nСсылка: {url}')
+        lines.append(f'• {format_member(member)}')
 
-    if changed:
-        write_recruit_state(state)
+    body = '\n'.join(lines) if lines else '• нет участников'
+    description = f'Рекруты ({count})\n{body}'
 
-    description = '\n\n'.join(lines) if lines else 'Пока нет участников с ролью Рекрут.'
     if len(description) > 3900:
         description = description[:3900] + '\n\nСписок слишком длинный, часть рекрутов скрыта.'
 
-    embed = discord.Embed(title='🪖 Рекруты и приглашения', description=description, color=0x00E3FF)
+    embed = discord.Embed(title=f'👥 Состав-отдела {guild.name}', description=description, color=0x00E3FF)
     embed.set_thumbnail(url=THUMBNAIL_URL)
     embed.set_image(url=MAIN_IMAGE_URL)
-    embed.set_footer(text='Кнопка создаёт одну вечную ссылку. Поменять её после создания нельзя.')
+    embed.set_footer(text='Автообновление каждые 5 минут')
     embed.timestamp = discord.utils.utcnow()
-    return embed, RecruitView()
+    return embed, RefreshView()
 
 def build_report_button_payload() -> tuple[discord.Embed, discord.ui.View]:
     embed = discord.Embed(

@@ -1233,14 +1233,16 @@ def filter_members_by_role(members: list[discord.Member], role_id: int) -> list[
 async def build_payload(guild: discord.Guild) -> tuple[discord.Embed, discord.ui.View]:
     all_members = await fetch_guild_members(guild)
     seen: set[int] = set()
-    sections = []
+    role_counts: list[tuple[RoleInfo, int, list[discord.Member]]] = []
     for role_info in ROLE_ORDER:
         members = [m for m in filter_members_by_role(all_members, role_info.role_id) if m.id not in seen]
         seen.update(m.id for m in members)
         members = sort_members(members)
-        count = len(members)
-
-        header = f'{role_info.label} ({count})'
+        role_counts.append((role_info, len(members), members))
+    total = sum(count for _, count, _ in role_counts)
+    sections = []
+    for role_info, count, members in role_counts:
+        header = f'{role_info.label} ({total})'
         if role_info.count_only:
             sections.append(header)
             continue

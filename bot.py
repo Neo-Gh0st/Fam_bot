@@ -233,6 +233,30 @@ class BirthdayButtonView(discord.ui.View):
         await interaction.response.send_modal(BirthdayModal())
 
 
+class BlacklistSearchModal(discord.ui.Modal, title='Поиск участника'):
+    query = discord.ui.TextInput(
+        label='Введите имя или ник',
+        placeholder='Часть имени для поиска...',
+        max_length=100,
+    )
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        q = str(self.query).lower().strip()
+        guild = interaction.guild
+        if not guild:
+            return
+        members = [m for m in guild.members if not m.bot and q in m.display_name.lower()]
+        members.sort(key=lambda m: m.display_name.lower())
+        if not members:
+            await interaction.response.send_message('Участники не найдены.', ephemeral=True)
+            return
+        await interaction.response.send_message(
+            f'Найдено {len(members)}:',
+            view=BlacklistMemberView(members),
+            ephemeral=True,
+        )
+
+
 class BlacklistMemberSelect(discord.ui.Select):
     def __init__(self, members: list[discord.Member]) -> None:
         options = [
@@ -300,13 +324,7 @@ class BlacklistView(discord.ui.View):
 
     @discord.ui.button(label='Добавить в чёрный список', style=discord.ButtonStyle.danger, emoji='🚫', custom_id='blacklist_add')
     async def blacklist_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        await interaction.response.defer(ephemeral=True)
-        guild = interaction.guild
-        if not guild:
-            return
-        members = [m for m in guild.members if not m.bot]
-        members.sort(key=lambda m: m.display_name.lower())
-        await interaction.followup.send('Выберите участника:', view=BlacklistMemberView(members), ephemeral=True)
+        await interaction.response.send_modal(BlacklistSearchModal())
 
 
 class RecruitReportButtonView(discord.ui.View):

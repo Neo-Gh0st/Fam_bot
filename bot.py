@@ -1232,7 +1232,6 @@ def filter_members_by_role(members: list[discord.Member], role_id: int) -> list[
 
 async def build_payload(guild: discord.Guild) -> tuple[discord.Embed, discord.ui.View]:
     all_members = await fetch_guild_members(guild)
-    print(f'[DEBUG] build_payload: {len(all_members)} members fetched, guild.member_count={guild.member_count}')
     seen: set[int] = set()
     sections = []
     for role_info in ROLE_ORDER:
@@ -1280,11 +1279,8 @@ async def create_or_get_recruit_invite(member: discord.Member) -> dict:
 
 async def build_recruit_payload(guild: discord.Guild) -> tuple[discord.Embed, discord.ui.View]:
     all_members = await fetch_guild_members(guild)
-    higher_role_ids = {r.role_id for r in ROLE_ORDER}
+    higher_role_ids = {r.role_id for r in ROLE_ORDER if r.role_id != CENT_ROLE_ID}
     recruit_members = filter_members_by_role(all_members, RECRUIT_ROLE_ID)
-    print(f'[DEBUG] recruit_board: {len(all_members)} members, {len(recruit_members)} with recruit role, higher_role_ids={higher_role_ids}')
-    for m in recruit_members[:5]:
-        print(f'[DEBUG] recruit: {m.display_name} roles: {[r.id for r in m.roles]}')
     recruits = sort_members([
         m for m in recruit_members
         if not any(r.id in higher_role_ids for r in m.roles)

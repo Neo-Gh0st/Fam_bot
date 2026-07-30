@@ -296,7 +296,7 @@ class BlacklistReasonModal(discord.ui.Modal, title='Чёрный список �
     async def on_submit(self, interaction: discord.Interaction) -> None:
         channel = await get_text_channel(BLACKLIST_CHANNEL_ID)
         embed = discord.Embed(
-            title='🚫 Чёрный список',
+            title='🚫 Чёрный список + БАН',
             color=0xEF4444,
             timestamp=discord.utils.utcnow(),
         )
@@ -306,9 +306,21 @@ class BlacklistReasonModal(discord.ui.Modal, title='Чёрный список �
         embed.set_footer(text=f'Добавлено: {interaction.user.display_name}', icon_url=interaction.user.display_avatar.url if interaction.user.display_avatar else None)
 
         await channel.send(embed=embed)
-        await interaction.response.send_message(f'<@{self.member_id}> добавлен в чёрный список.', ephemeral=True)
+
+        member = interaction.guild.get_member(self.member_id)
+        ban_status = ''
+        if member:
+            try:
+                await member.ban(reason=str(self.reason), delete_message_days=0)
+                ban_status = ' и забанен'
+            except Exception:
+                ban_status = ' (бан не удался)'
+        else:
+            ban_status = ' (участник не на сервере)'
+
+        await interaction.response.send_message(f'<@{self.member_id}> добавлен в чёрный список{ban_status}.', ephemeral=True)
         asyncio.create_task(send_log(
-            '🚫 Добавлен в чёрный список',
+            '🚫 Добавлен в чёрный список + БАН',
             fields=[
                 ('Участник', f'<@{self.member_id}>', True),
                 ('Причина', str(self.reason), False),

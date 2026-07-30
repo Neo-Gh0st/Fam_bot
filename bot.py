@@ -2771,5 +2771,12 @@ async def test_cmd(interaction: discord.Interaction) -> None:
 
 # --------------- Бот запускается ---------------
 
-bot.run(BOT_TOKEN)
+import time as _time
+
+while True:
+    try:
+        bot.run(BOT_TOKEN)
+        break
+    except Exception:
+        _time.sleep(30)
 

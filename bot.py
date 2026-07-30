@@ -1288,12 +1288,9 @@ async def build_recruit_payload(guild: discord.Guild) -> tuple[discord.Embed, di
     ])
     count = len(recruits)
 
-    lines = []
-    for member in recruits:
-        lines.append(f'• {format_member(member)}')
-
-    body = '\n'.join(lines) if lines else '• нет участников'
-    description = f'Рекруты ({count})\n{body}'
+    header = f'Рекруты ({count})'
+    body = '\n'.join(f'• {format_member(member)}' for member in recruits) if recruits else '• нет участников'
+    description = f'{header}\n{body}'
 
     if len(description) > 3900:
         description = description[:3900] + '\n\nСписок слишком длинный, часть рекрутов скрыта.'

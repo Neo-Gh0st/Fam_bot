@@ -1280,7 +1280,11 @@ async def create_or_get_recruit_invite(member: discord.Member) -> dict:
 
 async def build_recruit_payload(guild: discord.Guild) -> tuple[discord.Embed, discord.ui.View]:
     all_members = await fetch_guild_members(guild)
-    recruits = sort_members(filter_members_by_role(all_members, RECRUIT_ROLE_ID))
+    higher_role_ids = {r.role_id for r in ROLE_ORDER}
+    recruits = sort_members([
+        m for m in filter_members_by_role(all_members, RECRUIT_ROLE_ID)
+        if not any(r.id in higher_role_ids for r in m.roles)
+    ])
     count = len(recruits)
 
     lines = []

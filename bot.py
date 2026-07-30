@@ -1232,6 +1232,9 @@ def filter_members_by_role(members: list[discord.Member], role_id: int) -> list[
 
 async def build_payload(guild: discord.Guild) -> tuple[discord.Embed, discord.ui.View]:
     all_members = await fetch_guild_members(guild)
+    print(f'[DEBUG] fetch_guild_members returned {len(all_members)} members')
+    for m in all_members[:3]:
+        print(f'[DEBUG] {m.display_name} roles: {[r.id for r in m.roles]}')
     sections = []
     for role_info in ROLE_ORDER:
         members = sort_members(filter_members_by_role(all_members, role_info.role_id))

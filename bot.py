@@ -1239,15 +1239,7 @@ async def update_invite_cache(guild: discord.Guild) -> dict[str, discord.Invite]
 async def fetch_guild_members(guild: discord.Guild) -> list[discord.Member]:
     try:
         await asyncio.sleep(2)
-        raw = [m async for m in guild.fetch_members(limit=None)]
-        refreshed = []
-        for m in raw:
-            try:
-                fresh = await guild.fetch_member(m.id)
-                refreshed.append(fresh)
-            except Exception:
-                refreshed.append(m)
-        return refreshed
+        return [m async for m in guild.fetch_members(limit=None)]
     except Exception as exc:
         print(f'fetch_members error: {exc}')
         return []

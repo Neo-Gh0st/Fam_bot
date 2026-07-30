@@ -62,6 +62,7 @@ MEETING_ROLE_ID = int(os.getenv('MEETING_ROLE_ID', '0'))
 MEETING_VOICE_CHANNEL_ID = int(os.getenv('MEETING_VOICE_CHANNEL_ID', '1342078486419869762'))
 AUTO_REFRESH_SECONDS = 5 * 60
 REFRESH_BUTTON_ID = 'family_refresh'
+RECRUIT_REFRESH_BUTTON_ID = 'recruit_refresh'
 CREATE_RECRUIT_INVITE_BUTTON_ID = 'recruit_create_invite'
 REFRESH_RECRUIT_BOARD_BUTTON_ID = 'recruit_refresh_board'
 REPORT_RECRUIT_INVITE_BUTTON_ID = 'recruit_report_invite'
@@ -123,6 +124,23 @@ class RefreshView(discord.ui.View):
         except Exception:
             return
         asyncio.create_task(refresh_board_safely())
+        try:
+            await interaction.followup.send('Обновляю баннер...', ephemeral=True)
+        except Exception:
+            pass
+
+
+class RecruitRefreshView(discord.ui.View):
+    def __init__(self) -> None:
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label='Обновить', style=discord.ButtonStyle.primary, emoji='🔄', custom_id=RECRUIT_REFRESH_BUTTON_ID)
+    async def refresh_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        try:
+            await interaction.response.defer(ephemeral=True)
+        except Exception:
+            return
+        asyncio.create_task(refresh_recruit_board_safely())
         try:
             await interaction.followup.send('Обновляю баннер...', ephemeral=True)
         except Exception:
@@ -1308,7 +1326,7 @@ async def build_recruit_payload(guild: discord.Guild) -> tuple[discord.Embed, di
     embed.set_image(url=MAIN_IMAGE_URL)
     embed.set_footer(text='Автообновление каждые 5 минут')
     embed.timestamp = discord.utils.utcnow()
-    return embed, RefreshView()
+    return embed, RecruitRefreshView()
 
 def build_report_button_payload() -> tuple[discord.Embed, discord.ui.View]:
     embed = discord.Embed(

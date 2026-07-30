@@ -2647,7 +2647,6 @@ async def admin_panel(interaction: discord.Interaction) -> None:
     asyncio.create_task(refresh_admin_panel_safely())
 
 @bot.tree.command(name='mod_panel', description='Отправить кнопку публикации редукса/ганпака в канал')
-@app_commands.default_permissions(manage_guild=True)
 async def mod_panel(interaction: discord.Interaction) -> None:
     if not isinstance(interaction.user, discord.Member):
         await interaction.response.send_message('Ошибка.', ephemeral=True)

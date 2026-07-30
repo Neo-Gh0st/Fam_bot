@@ -1281,8 +1281,12 @@ async def create_or_get_recruit_invite(member: discord.Member) -> dict:
 async def build_recruit_payload(guild: discord.Guild) -> tuple[discord.Embed, discord.ui.View]:
     all_members = await fetch_guild_members(guild)
     higher_role_ids = {r.role_id for r in ROLE_ORDER}
+    recruit_members = filter_members_by_role(all_members, RECRUIT_ROLE_ID)
+    print(f'[DEBUG] recruit_board: {len(all_members)} members, {len(recruit_members)} with recruit role, higher_role_ids={higher_role_ids}')
+    for m in recruit_members[:5]:
+        print(f'[DEBUG] recruit: {m.display_name} roles: {[r.id for r in m.roles]}')
     recruits = sort_members([
-        m for m in filter_members_by_role(all_members, RECRUIT_ROLE_ID)
+        m for m in recruit_members
         if not any(r.id in higher_role_ids for r in m.roles)
     ])
     count = len(recruits)

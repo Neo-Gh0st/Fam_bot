@@ -403,6 +403,12 @@ class ModPublishView(discord.ui.View):
 
     @discord.ui.button(label='Опубликовать мод', style=discord.ButtonStyle.primary, emoji='🔫', custom_id='mod_publish')
     async def mod_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        if not isinstance(interaction.user, discord.Member):
+            await interaction.response.send_message('Ошибка.', ephemeral=True)
+            return
+        if not any(r.id == CENT_ROLE_ID for r in interaction.user.roles):
+            await interaction.response.send_message('Нужна роль CENT.', ephemeral=True)
+            return
         await interaction.response.send_modal(ModPublishModal())
 
 
@@ -2643,6 +2649,12 @@ async def admin_panel(interaction: discord.Interaction) -> None:
 @bot.tree.command(name='mod_panel', description='Отправить кнопку публикации редукса/ганпака в канал')
 @app_commands.default_permissions(manage_guild=True)
 async def mod_panel(interaction: discord.Interaction) -> None:
+    if not isinstance(interaction.user, discord.Member):
+        await interaction.response.send_message('Ошибка.', ephemeral=True)
+        return
+    if not any(r.id == CENT_ROLE_ID for r in interaction.user.roles):
+        await interaction.response.send_message('Нужна роль CENT.', ephemeral=True)
+        return
     if not isinstance(interaction.channel, discord.TextChannel):
         await interaction.response.send_message('Используйте в текстовом канале.', ephemeral=True)
         return

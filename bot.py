@@ -1242,14 +1242,14 @@ async def build_payload(guild: discord.Guild) -> tuple[discord.Embed, discord.ui
     total = sum(count for _, count, _ in role_counts)
     sections = []
     for role_info, count, members in role_counts:
-        header = f'{role_info.label} ({total})'
+        header = f'{role_info.label} ({count})'
         if role_info.count_only:
             sections.append(header)
             continue
         body = '\n'.join(f'• {format_member(member)}' for member in members) if members else '• нет участников'
         sections.append(f'{header}\n{body}')
 
-    embed = discord.Embed(title=f'👥 Состав семьи {guild.name}', description='\n\n'.join(sections), color=0xF59E0B)
+    embed = discord.Embed(title=f'👥 Состав семьи {guild.name} — {total} чел.', description='\n\n'.join(sections), color=0xF59E0B)
     embed.set_thumbnail(url=THUMBNAIL_URL)
     embed.set_image(url=MAIN_IMAGE_URL)
     embed.set_footer(text='Автообновление каждые 5 минут')

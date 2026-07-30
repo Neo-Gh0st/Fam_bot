@@ -233,18 +233,41 @@ class BirthdayButtonView(discord.ui.View):
         await interaction.response.send_modal(BirthdayModal())
 
 
-class BlacklistModal(discord.ui.Modal, title='Добавить в чёрный список'):
-    nickname = discord.ui.TextInput(
-        label='Ник человека',
-        placeholder='Например: @username или никнейм',
-        max_length=100,
-    )
+class BlacklistMemberSelect(discord.ui.Select):
+    def __init__(self, members: list[discord.Member]) -> None:
+        options = [
+            discord.SelectOption(label=m.display_name, value=str(m.id), description=f'ID: {m.id}')
+            for m in members[:25]
+        ]
+        super().__init__(placeholder='Выберите участника...', options=options, custom_id='blacklist_member_select')
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        member_id = int(self.values[0])
+        member = interaction.guild.get_member(member_id) or await interaction.guild.fetch_member(member_id)
+        await interaction.response.send_modal(BlacklistReasonModal(member))
+
+
+class BlacklistMemberView(discord.ui.View):
+    def __init__(self, members: list[discord.Member]) -> None:
+        super().__init__(timeout=60)
+        self.add_item(BlacklistMemberSelect(members))
+
+
+class BlacklistReasonModal(discord.ui.Modal, title='Чёрный список — причина'):
+    member_id: int = 0
+    member_name: str = ''
+
     reason = discord.ui.TextInput(
         label='Причина',
         placeholder='Укажите причину добавления',
         style=discord.TextStyle.paragraph,
         max_length=500,
     )
+
+    def __init__(self, member: discord.Member) -> None:
+        super().__init__()
+        self.member_id = member.id
+        self.member_name = member.display_name
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         channel = await get_text_channel(BLACKLIST_CHANNEL_ID)
@@ -253,17 +276,17 @@ class BlacklistModal(discord.ui.Modal, title='Добавить в чёрный �
             color=0xEF4444,
             timestamp=discord.utils.utcnow(),
         )
-        embed.add_field(name='Ник', value=str(self.nickname), inline=True)
+        embed.add_field(name='Участник', value=f'<@{self.member_id}>', inline=True)
         embed.add_field(name='Причина', value=str(self.reason), inline=False)
         embed.set_thumbnail(url=THUMBNAIL_URL)
         embed.set_footer(text=f'Добавлено: {interaction.user.display_name}', icon_url=interaction.user.display_avatar.url if interaction.user.display_avatar else None)
 
         await channel.send(embed=embed)
-        await interaction.response.send_message('Участник добавлен в чёрный список.', ephemeral=True)
+        await interaction.response.send_message(f'<@{self.member_id}> добавлен в чёрный список.', ephemeral=True)
         asyncio.create_task(send_log(
             '🚫 Добавлен в чёрный список',
             fields=[
-                ('Ник', str(self.nickname), True),
+                ('Участник', f'<@{self.member_id}>', True),
                 ('Причина', str(self.reason), False),
                 ('Добавил', _log_user_field(interaction.user), True),
             ],
@@ -277,7 +300,13 @@ class BlacklistView(discord.ui.View):
 
     @discord.ui.button(label='Добавить в чёрный список', style=discord.ButtonStyle.danger, emoji='🚫', custom_id='blacklist_add')
     async def blacklist_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        await interaction.response.send_modal(BlacklistModal())
+        await interaction.response.defer(ephemeral=True)
+        guild = interaction.guild
+        if not guild:
+            return
+        members = [m for m in guild.members if not m.bot]
+        members.sort(key=lambda m: m.display_name.lower())
+        await interaction.followup.send('Выберите участника:', view=BlacklistMemberView(members), ephemeral=True)
 
 
 class RecruitReportButtonView(discord.ui.View):

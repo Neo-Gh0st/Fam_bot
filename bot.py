@@ -1233,15 +1233,14 @@ def filter_members_by_role(members: list[discord.Member], role_id: int) -> list[
 async def build_payload(guild: discord.Guild) -> tuple[discord.Embed, discord.ui.View]:
     all_members = await fetch_guild_members(guild)
     seen: set[int] = set()
-    role_counts: list[tuple[RoleInfo, int, list[discord.Member]]] = []
-    for role_info in ROLE_ORDER:
-        members = [m for m in filter_members_by_role(all_members, role_info.role_id) if m.id not in seen]
-        seen.update(m.id for m in members)
-        members = sort_members(members)
-        role_counts.append((role_info, len(members), members))
-    total = sum(count for _, count, _ in role_counts)
     sections = []
-    for role_info, count, members in role_counts:
+    for role_info in ROLE_ORDER:
+        all_with_role = filter_members_by_role(all_members, role_info.role_id)
+        filtered = [m for m in all_with_role if m.id not in seen]
+        seen.update(m.id for m in all_with_role)
+        members = sort_members(filtered)
+
+        count = len(all_with_role) if role_info.role_id == CENT_ROLE_ID else len(members)
         header = f'{role_info.label} ({count})'
         if role_info.count_only:
             sections.append(header)
@@ -1249,7 +1248,7 @@ async def build_payload(guild: discord.Guild) -> tuple[discord.Embed, discord.ui
         body = '\n'.join(f'• {format_member(member)}' for member in members) if members else '• нет участников'
         sections.append(f'{header}\n{body}')
 
-    embed = discord.Embed(title=f'👥 Состав семьи {guild.name} — {total} чел.', description='\n\n'.join(sections), color=0xF59E0B)
+    embed = discord.Embed(title=f'👥 Состав семьи {guild.name}', description='\n\n'.join(sections), color=0xF59E0B)
     embed.set_thumbnail(url=THUMBNAIL_URL)
     embed.set_image(url=MAIN_IMAGE_URL)
     embed.set_footer(text='Автообновление каждые 5 минут')

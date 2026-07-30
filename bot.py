@@ -1293,7 +1293,7 @@ async def build_recruit_payload(guild: discord.Guild) -> tuple[discord.Embed, di
     if len(description) > 3900:
         description = description[:3900] + '\n\nСписок слишком длинный, часть рекрутов скрыта.'
 
-    embed = discord.Embed(title=f'👥 Состав-отдела {guild.name}', description=description, color=0x00E3FF)
+    embed = discord.Embed(title=f'👥 Состав-отдела Рекрутов', description=description, color=0x00E3FF)
     embed.set_thumbnail(url=THUMBNAIL_URL)
     embed.set_image(url=MAIN_IMAGE_URL)
     embed.set_footer(text='Автообновление каждые 5 минут')

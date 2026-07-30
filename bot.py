@@ -1024,6 +1024,15 @@ def write_json(path: Path, data: dict) -> None:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
 
 def read_verification_state() -> dict:
+    env_msg = os.getenv('VERIFICATION_MESSAGE_ID', '')
+    env_ch = os.getenv('VERIFICATION_CHANNEL_ID', '')
+    env_guild = os.getenv('VERIFICATION_GUILD_ID', '')
+    if env_msg and env_ch and env_guild:
+        return {
+            'guild_id': int(env_guild),
+            'channel_id': int(env_ch),
+            'message_id': int(env_msg),
+        }
     return read_json(VERIFICATION_STATE_FILE)
 
 def write_verification_state(data: dict) -> None:

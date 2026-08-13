@@ -2955,5 +2955,6 @@ while True:
         bot.run(BOT_TOKEN)
         break
     except Exception:
+        traceback.print_exc()
         time.sleep(30)
 

@@ -1091,11 +1091,10 @@ def build_vzp_reacted(entry: dict, guild: discord.Guild | None) -> str:
 def build_vzp_tier_tags(guild: discord.Guild | None) -> str:
     if not guild:
         return ''
-    lines = []
-    for idx, role_id in enumerate(VZP_PING_ROLE_IDS, start=1):
-        role = guild.get_role(role_id)
-        lines.append(f'**Тир {idx}:** {role.mention if role else f"<@&{role_id}>"}')
-    return '\n'.join(lines)
+    return ' '.join(
+        role.mention if (role := guild.get_role(role_id)) else f'<@&{role_id}>'
+        for role_id in VZP_PING_ROLE_IDS
+    )
 
 def build_vzp_embed(entry: dict, guild: discord.Guild | None) -> discord.Embed:
     is_def = entry.get('type') == 'def'
@@ -3157,10 +3156,7 @@ async def publish_vzp_banner(interaction: discord.Interaction, vzp_type: str, si
     entry = {'type': vzp_type, 'text': size, 'time': vzp_time, 'reacts': {}, 'channel_id': interaction.channel_id}
     embed = build_vzp_embed(entry, interaction.guild)
     view = VzpBannerView()
-    role_mentions = ' '.join(f'<@&{role_id}>' for role_id in VZP_PING_ROLE_IDS)
-    content = role_mentions if role_mentions else None
     await interaction.response.send_message(
-        content=content,
         embed=embed,
         view=view,
         file=discord.File(image_file, filename=image_file.name),

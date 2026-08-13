@@ -2092,13 +2092,7 @@ async def on_ready() -> None:
         except Exception as exc:
             print(f'Invite cache failed for {guild}: {exc}')
     try:
-        guild_obj = discord.Object(id=int(GUILD_ID)) if GUILD_ID else None
-        if guild_obj is not None:
-            bot.tree.clear_commands(guild=None)
-            await bot.tree.sync(guild=None)
-            synced = await bot.tree.sync(guild=guild_obj)
-        else:
-            synced = await bot.tree.sync()
+        synced = await bot.tree.sync()
         print(f'Synced {len(synced)} commands: {[c.name for c in synced]}')
     except Exception as exc:
         print(f'Command sync failed: {exc}')

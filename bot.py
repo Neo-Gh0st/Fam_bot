@@ -1149,6 +1149,10 @@ class VzpRemoveView(discord.ui.View):
                 if uid in entry.get('reacts', {}):
                     del entry['reacts'][uid]
                     removed.append(uid)
+            entry.setdefault('kicked', [])
+            for uid in removed:
+                if uid not in entry['kicked']:
+                    entry['kicked'].append(uid)
             write_vzp_state(state)
             embed = build_vzp_embed(entry, interaction.guild)
             await interaction.response.edit_message(
@@ -1185,6 +1189,9 @@ class VzpBannerView(discord.ui.View):
                 await interaction.response.send_message('Банер не найден.', ephemeral=True)
                 return
             uid = str(interaction.user.id)
+            if uid in entry.get('kicked', []):
+                await interaction.response.send_message('Ты был убран из списка и не можешь вернуться.', ephemeral=True)
+                return
             entry.setdefault('reacts', {})[uid] = 1
             write_vzp_state(state)
             embed = build_vzp_embed(entry, interaction.guild)

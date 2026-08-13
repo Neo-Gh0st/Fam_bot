@@ -1987,9 +1987,8 @@ async def on_ready() -> None:
         except Exception as exc:
             print(f'Invite cache failed for {guild}: {exc}')
     try:
-        bot.tree.clear_commands(guild=None)
         synced = await bot.tree.sync()
-        print(f'Synced {len(synced)} commands')
+        print(f'Synced {len(synced)} commands: {[c.name for c in synced]}')
     except Exception as exc:
         print(f'Command sync failed: {exc}')
     try:
@@ -2049,6 +2048,18 @@ async def on_message(message: discord.Message) -> None:
         return
 
     await bot.process_commands(message)
+
+
+@bot.tree.error
+async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError) -> None:
+    print(f'Command error {interaction.command.name if interaction.command else "?"}: {error}')
+    try:
+        if not interaction.response.is_done():
+            await interaction.response.send_message(f'Ошибка: {error}', ephemeral=True)
+        else:
+            await interaction.followup.send(f'Ошибка: {error}', ephemeral=True)
+    except Exception:
+        pass
 
 
 @bot.event

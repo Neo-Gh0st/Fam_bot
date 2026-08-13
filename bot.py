@@ -1110,9 +1110,9 @@ def build_vzp_embed(entry: dict, guild: discord.Guild | None) -> discord.Embed:
     color = 0x38BDF8 if is_def else 0xF87171
     image_name = VZP_DEF_IMAGE_FILE.name if is_def else VZP_ATTACK_IMAGE_FILE.name
     embed = discord.Embed(title=title, color=color, timestamp=discord.utils.utcnow())
-    embed.add_field(name='🧱 Сколько на сколько', value=entry.get('text') or '—', inline=True)
-    embed.add_field(name='⏰ Время', value=entry.get('time') or '—', inline=True)
-    embed.add_field(name='👥 Участники', value=build_vzp_participants(entry, guild), inline=False)
+    embed.add_field(name='Сколько на сколько', value=entry.get('text') or '—', inline=True)
+    embed.add_field(name='Время', value=entry.get('time') or '—', inline=True)
+    embed.add_field(name='Участники', value=build_vzp_participants(entry, guild), inline=False)
     embed.set_image(url=f'attachment://{image_name}')
     return embed
 

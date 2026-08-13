@@ -2092,7 +2092,13 @@ async def on_ready() -> None:
         except Exception as exc:
             print(f'Invite cache failed for {guild}: {exc}')
     try:
-        synced = await bot.tree.sync()
+        guild_obj = discord.Object(id=int(GUILD_ID)) if GUILD_ID else None
+        if guild_obj is not None:
+            bot.tree.clear_commands(guild=None)
+            await bot.tree.sync(guild=None)
+            synced = await bot.tree.sync(guild=guild_obj)
+        else:
+            synced = await bot.tree.sync()
         print(f'Synced {len(synced)} commands: {[c.name for c in synced]}')
     except Exception as exc:
         print(f'Command sync failed: {exc}')
@@ -3064,7 +3070,22 @@ async def test_cmd(interaction: discord.Interaction) -> None:
     await interaction.response.send_message('Привет', ephemeral=True)
 
 
-async def publish_vzp_banner(interaction: discord.Interaction, vzp_type: str) -> None:
+class VzpCreateModal(discord.ui.Modal, title='VZP — сколько на сколько'):
+    size = discord.ui.TextInput(
+        label='Размер',
+        placeholder='Например: 7x7',
+        max_length=50,
+    )
+
+    def __init__(self, vzp_type: str) -> None:
+        super().__init__()
+        self.vzp_type = vzp_type
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        await publish_vzp_banner(interaction, self.vzp_type, str(self.size).strip())
+
+
+async def publish_vzp_banner(interaction: discord.Interaction, vzp_type: str, size: str = '') -> None:
     if not isinstance(interaction.user, discord.Member) or not interaction.user.guild_permissions.manage_guild:
         await interaction.response.send_message('Нужны права «Управление сервером».', ephemeral=True)
         return
@@ -3073,7 +3094,7 @@ async def publish_vzp_banner(interaction: discord.Interaction, vzp_type: str) ->
         await interaction.response.send_message('Файл изображения не найден в проекте.', ephemeral=True)
         return
 
-    entry = {'type': vzp_type, 'text': '', 'reacts': {}}
+    entry = {'type': vzp_type, 'text': size, 'reacts': {}}
     embed = build_vzp_embed(entry, interaction.guild)
     view = VzpBannerView()
     await interaction.response.send_message(
@@ -3087,19 +3108,25 @@ async def publish_vzp_banner(interaction: discord.Interaction, vzp_type: str) ->
     write_vzp_state(state)
     asyncio.create_task(send_log(
         '🛡 VZP банер создан',
-        f'{interaction.user.mention} создал банер **{"Защита" if vzp_type == "def" else "Атака"}** в {interaction.channel.mention if interaction.channel else ""}',
+        f'{interaction.user.mention} создал банер **{"Защита" if vzp_type == "def" else "Атака"}** (размер: **{size or "—"}**) в {interaction.channel.mention if interaction.channel else ""}',
         color=0x38BDF8, user=interaction.user,
     ))
 
 
 @bot.tree.command(name='vzp_def', description='Отправить банер защиты VZP')
 async def vzp_def_cmd(interaction: discord.Interaction) -> None:
-    await publish_vzp_banner(interaction, 'def')
+    if not isinstance(interaction.user, discord.Member) or not interaction.user.guild_permissions.manage_guild:
+        await interaction.response.send_message('Нужны права «Управление сервером».', ephemeral=True)
+        return
+    await interaction.response.send_modal(VzpCreateModal('def'))
 
 
 @bot.tree.command(name='vzp_attack', description='Отправить банер атаки VZP')
 async def vzp_attack_cmd(interaction: discord.Interaction) -> None:
-    await publish_vzp_banner(interaction, 'attack')
+    if not isinstance(interaction.user, discord.Member) or not interaction.user.guild_permissions.manage_guild:
+        await interaction.response.send_message('Нужны права «Управление сервером».', ephemeral=True)
+        return
+    await interaction.response.send_modal(VzpCreateModal('attack'))
 
 
 # --------------- Бот запускается ---------------

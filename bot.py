@@ -1087,10 +1087,10 @@ def build_vzp_embed(entry: dict, guild: discord.Guild | None) -> discord.Embed:
     reacts = entry.get('reacts', {})
     if reacts:
         lines = []
-        for uid, count in sorted(reacts.items(), key=lambda kv: (-kv[1], int(kv[0]))):
+        for uid in sorted(reacts.keys(), key=int):
             member = guild.get_member(int(uid)) if guild else None
             name = member.display_name if member else f'<@{uid}>'
-            lines.append(f'{name} — {count}')
+            lines.append(name)
         value = '\n'.join(lines)
     else:
         value = 'Пока никто не нажал'
@@ -1147,7 +1147,7 @@ class VzpBannerView(discord.ui.View):
                 await interaction.response.send_message('Банер не найден.', ephemeral=True)
                 return
             uid = str(interaction.user.id)
-            entry.setdefault('reacts', {})[uid] = entry['reacts'].get(uid, 0) + 1
+            entry.setdefault('reacts', {})[uid] = 1
             write_vzp_state(state)
             embed = build_vzp_embed(entry, interaction.guild)
             await interaction.response.edit_message(

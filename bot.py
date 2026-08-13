@@ -1076,6 +1076,31 @@ def write_vzp_state(data: dict) -> None:
 def vzp_image_file(vzp_type: str) -> Path:
     return VZP_DEF_IMAGE_FILE if vzp_type == 'def' else VZP_ATTACK_IMAGE_FILE
 
+def build_vzp_participants(entry: dict, guild: discord.Guild | None) -> str:
+    if not guild:
+        return 'Нет участников'
+    reacts = entry.get('reacts', {})
+    tier_ids = VZP_PING_ROLE_IDS
+    sections = []
+    total = 0
+    reacted = 0
+    for idx, role_id in enumerate(tier_ids, start=1):
+        role = guild.get_role(role_id)
+        members = [m for m in guild.members if not m.bot and any(r.id == role_id for r in m.roles)]
+        if not members:
+            continue
+        members.sort(key=lambda m: m.display_name.casefold())
+        lines = []
+        for m in members:
+            indicator = '🟢' if str(m.id) in reacts else '🔴'
+            lines.append(f'{indicator} {m.mention}')
+        total += len(members)
+        reacted += sum(1 for m in members if str(m.id) in reacts)
+        sections.append(f'**Тир{idx} ⬇️** ({len(members)})\n' + '\n'.join(lines))
+    if not sections:
+        return 'Нет участников'
+    return '\n\n'.join(sections) + f'\n\n**{reacted}/{total}** участвуют'
+
 def build_vzp_embed(entry: dict, guild: discord.Guild | None) -> discord.Embed:
     is_def = entry.get('type') == 'def'
     title = '🛡 Защита VZP' if is_def else '⚔️ Атака VZP'
@@ -1085,25 +1110,12 @@ def build_vzp_embed(entry: dict, guild: discord.Guild | None) -> discord.Embed:
     embed.set_image(url=f'attachment://{image_name}')
     embed.add_field(name='Размер', value=entry.get('text') or '—', inline=True)
     embed.add_field(name='Время', value=entry.get('time') or '—', inline=True)
-
-    reacts = entry.get('reacts', {})
-    members: list[discord.Member] = []
-    if guild:
-        role_ids = set(VZP_PING_ROLE_IDS)
-        members = [m for m in guild.members if not m.bot and any(r.id in role_ids for r in m.roles)]
-    members.sort(key=lambda m: m.display_name.casefold())
-
-    lines = []
-    for member in members:
-        indicator = '🟢' if str(member.id) in reacts else '🔴'
-        lines.append(f'{indicator} {member.display_name}')
-    if not lines:
-        value = 'Нет участников'
-    else:
-        reacted = sum(1 for m in members if str(m.id) in reacts)
-        value = '\n'.join(lines) + f'\n\n**{reacted}/{len(members)}** участвуют'
-    embed.add_field(name='Участники', value=value, inline=False)
     return embed
+
+def build_vzp_embeds(entry: dict, guild: discord.Guild | None) -> list[discord.Embed]:
+    embed = build_vzp_embed(entry, guild)
+    participants = discord.Embed(color=embed.color, description=build_vzp_participants(entry, guild))
+    return [embed, participants]
 
 class VzpBannerView(discord.ui.View):
     def __init__(self) -> None:
@@ -1121,9 +1133,9 @@ class VzpBannerView(discord.ui.View):
             uid = str(interaction.user.id)
             entry.setdefault('reacts', {})[uid] = 1
             write_vzp_state(state)
-            embed = build_vzp_embed(entry, interaction.guild)
+            embeds = build_vzp_embeds(entry, interaction.guild)
             await interaction.response.edit_message(
-                embed=embed,
+                embeds=embeds,
                 view=VzpBannerView(),
                 attachments=[discord.File(vzp_image_file(entry.get('type') or 'def'), filename=vzp_image_file(entry.get('type') or 'def').name)],
             )
@@ -3063,13 +3075,13 @@ async def publish_vzp_banner(interaction: discord.Interaction, vzp_type: str, si
         return
 
     entry = {'type': vzp_type, 'text': size, 'time': vzp_time, 'reacts': {}}
-    embed = build_vzp_embed(entry, interaction.guild)
+    embeds = build_vzp_embeds(entry, interaction.guild)
     view = VzpBannerView()
     role_mentions = ' '.join(f'<@&{role_id}>' for role_id in VZP_PING_ROLE_IDS)
     content = role_mentions if role_mentions else None
     await interaction.response.send_message(
         content=content,
-        embed=embed,
+        embeds=embeds,
         view=view,
         file=discord.File(image_file, filename=image_file.name),
         allowed_mentions=discord.AllowedMentions(roles=True, users=False),

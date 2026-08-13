@@ -101,6 +101,12 @@ BLACKLIST_STATE_FILE = Path(__file__).with_name('blacklist-state.json')
 
 MOD_CHANNEL_ID = int(os.getenv('MOD_CHANNEL_ID', '1531246360895033543'))
 
+VZP_STATE_FILE = Path(__file__).with_name('vzp-state.json')
+VZP_DEF_IMAGE_FILE = Path(__file__).parent / 'assets' / 'def.png'
+VZP_ATTACK_IMAGE_FILE = Path(__file__).parent / 'assets' / 'attack.png'
+VZP_TEXT_BUTTON_ID = 'vzp_edit_text'
+VZP_REACT_BUTTON_ID = 'vzp_react'
+
 NVIDIA_API_KEY = os.getenv('NVIDIA_API_KEY')
 NVIDIA_API_URL = 'https://integrate.api.nvidia.com/v1/chat/completions'
 NVIDIA_MODEL = 'nvidia/ising-calibration-1.5-31b'
@@ -1059,6 +1065,104 @@ class LeaderboardView(discord.ui.View):
         embed = self.build_embed(interaction.guild)
         await interaction.response.edit_message(embed=embed, view=self)
 
+# --------------- VZP (Защита / Атака) ---------------
+
+def read_vzp_state() -> dict:
+    return read_json(VZP_STATE_FILE)
+
+def write_vzp_state(data: dict) -> None:
+    write_json(VZP_STATE_FILE, data)
+
+def vzp_image_file(vzp_type: str) -> Path:
+    return VZP_DEF_IMAGE_FILE if vzp_type == 'def' else VZP_ATTACK_IMAGE_FILE
+
+def build_vzp_embed(entry: dict, guild: discord.Guild | None) -> discord.Embed:
+    is_def = entry.get('type') == 'def'
+    title = '🛡 Защита VZP' if is_def else '⚔️ Атака VZP'
+    color = 0x38BDF8 if is_def else 0xF87171
+    image_name = VZP_DEF_IMAGE_FILE.name if is_def else VZP_ATTACK_IMAGE_FILE.name
+    embed = discord.Embed(title=title, color=color, timestamp=discord.utils.utcnow())
+    embed.set_image(url=f'attachment://{image_name}')
+    embed.add_field(name='Текст', value=entry.get('text') or '—', inline=False)
+    reacts = entry.get('reacts', {})
+    if reacts:
+        lines = []
+        for uid, count in sorted(reacts.items(), key=lambda kv: (-kv[1], int(kv[0]))):
+            member = guild.get_member(int(uid)) if guild else None
+            name = member.display_name if member else f'<@{uid}>'
+            lines.append(f'{name} — {count}')
+        value = '\n'.join(lines)
+    else:
+        value = 'Пока никто не нажал'
+    embed.add_field(name='Кто нажал', value=value, inline=False)
+    return embed
+
+class VzpTextModal(discord.ui.Modal, title='VZP — текст на банере'):
+    text = discord.ui.TextInput(
+        label='Текст',
+        placeholder='Например: 7x7',
+        max_length=100,
+        required=False,
+    )
+
+    def __init__(self, message_id: int) -> None:
+        super().__init__()
+        self.message_id = message_id
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        try:
+            state = read_vzp_state()
+            entry = state.get(str(self.message_id))
+            if entry is None:
+                await interaction.response.send_message('Банер не найден.', ephemeral=True)
+                return
+            entry['text'] = str(self.text).strip()
+            write_vzp_state(state)
+            embed = build_vzp_embed(entry, interaction.guild)
+            await interaction.response.edit_message(
+                embed=embed,
+                view=VzpBannerView(),
+                attachments=[discord.File(vzp_image_file(entry.get('type') or 'def'), filename=vzp_image_file(entry.get('type') or 'def').name)],
+            )
+            asyncio.create_task(send_log(
+                '🛡 VZP: текст обновлён',
+                f'{interaction.user.mention} установил текст: **{entry["text"] or "—"}**',
+                color=0x38BDF8, user=interaction.user,
+            ))
+        except Exception as exc:
+            await interaction.response.send_message(f'Ошибка: {exc}', ephemeral=True)
+            print(f'[VZP MODAL ERROR] {exc}')
+
+class VzpBannerView(discord.ui.View):
+    def __init__(self) -> None:
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label='⚔️ Участвую', style=discord.ButtonStyle.success, custom_id=VZP_REACT_BUTTON_ID)
+    async def react_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        try:
+            message_id = interaction.message.id
+            state = read_vzp_state()
+            entry = state.get(str(message_id))
+            if entry is None:
+                await interaction.response.send_message('Банер не найден.', ephemeral=True)
+                return
+            uid = str(interaction.user.id)
+            entry.setdefault('reacts', {})[uid] = entry['reacts'].get(uid, 0) + 1
+            write_vzp_state(state)
+            embed = build_vzp_embed(entry, interaction.guild)
+            await interaction.response.edit_message(
+                embed=embed,
+                view=VzpBannerView(),
+                attachments=[discord.File(vzp_image_file(entry.get('type') or 'def'), filename=vzp_image_file(entry.get('type') or 'def').name)],
+            )
+        except Exception as exc:
+            await interaction.response.send_message(f'Ошибка: {exc}', ephemeral=True)
+            print(f'[VZP REACT ERROR] {exc}')
+
+    @discord.ui.button(label='✏️ Текст', style=discord.ButtonStyle.secondary, custom_id=VZP_TEXT_BUTTON_ID)
+    async def text_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(VzpTextModal(interaction.message.id))
+
 class FamilyBot(commands.Bot):
     def __init__(self) -> None:
         super().__init__(command_prefix='!', intents=intents)
@@ -1082,6 +1186,7 @@ class FamilyBot(commands.Bot):
         self.add_view(RecruitAppBannerView())
         self.add_view(AdminPanelView())
         self.add_view(LeaderboardView())
+        self.add_view(VzpBannerView())
 
 bot = FamilyBot()
 
@@ -2957,6 +3062,44 @@ async def check_raid(member: discord.Member) -> None:
 @bot.tree.command(name='test', description='Проверка бота')
 async def test_cmd(interaction: discord.Interaction) -> None:
     await interaction.response.send_message('Привет', ephemeral=True)
+
+
+async def publish_vzp_banner(interaction: discord.Interaction, vzp_type: str) -> None:
+    if not isinstance(interaction.user, discord.Member) or not interaction.user.guild_permissions.manage_guild:
+        await interaction.response.send_message('Нужны права «Управление сервером».', ephemeral=True)
+        return
+    image_file = vzp_image_file(vzp_type)
+    if not image_file.is_file():
+        await interaction.response.send_message('Файл изображения не найден в проекте.', ephemeral=True)
+        return
+
+    entry = {'type': vzp_type, 'text': '', 'reacts': {}}
+    embed = build_vzp_embed(entry, interaction.guild)
+    view = VzpBannerView()
+    await interaction.response.send_message(
+        embed=embed,
+        view=view,
+        file=discord.File(image_file, filename=image_file.name),
+    )
+    message = await interaction.original_response()
+    state = read_vzp_state()
+    state[str(message.id)] = entry
+    write_vzp_state(state)
+    asyncio.create_task(send_log(
+        '🛡 VZP банер создан',
+        f'{interaction.user.mention} создал банер **{"Защита" if vzp_type == "def" else "Атака"}** в {interaction.channel.mention if interaction.channel else ""}',
+        color=0x38BDF8, user=interaction.user,
+    ))
+
+
+@bot.tree.command(name='vzp_def', description='Отправить банер защиты VZP')
+async def vzp_def_cmd(interaction: discord.Interaction) -> None:
+    await publish_vzp_banner(interaction, 'def')
+
+
+@bot.tree.command(name='vzp_attack', description='Отправить банер атаки VZP')
+async def vzp_attack_cmd(interaction: discord.Interaction) -> None:
+    await publish_vzp_banner(interaction, 'attack')
 
 
 # --------------- Бот запускается ---------------

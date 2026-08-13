@@ -1085,17 +1085,24 @@ def build_vzp_embed(entry: dict, guild: discord.Guild | None) -> discord.Embed:
     embed.set_image(url=f'attachment://{image_name}')
     embed.add_field(name='Размер', value=entry.get('text') or '—', inline=True)
     embed.add_field(name='Время', value=entry.get('time') or '—', inline=True)
+
     reacts = entry.get('reacts', {})
-    if reacts:
-        lines = []
-        for uid in sorted(reacts.keys(), key=int):
-            member = guild.get_member(int(uid)) if guild else None
-            name = member.display_name if member else f'<@{uid}>'
-            lines.append(name)
-        value = '\n'.join(lines)
+    members: list[discord.Member] = []
+    if guild:
+        role_ids = set(VZP_PING_ROLE_IDS)
+        members = [m for m in guild.members if not m.bot and any(r.id in role_ids for r in m.roles)]
+    members.sort(key=lambda m: m.display_name.casefold())
+
+    lines = []
+    for member in members:
+        indicator = '🟢' if str(member.id) in reacts else '🔴'
+        lines.append(f'{indicator} {member.display_name}')
+    if not lines:
+        value = 'Нет участников'
     else:
-        value = 'Пока никто не нажал'
-    embed.add_field(name='Кто нажал', value=value, inline=False)
+        reacted = sum(1 for m in members if str(m.id) in reacts)
+        value = '\n'.join(lines) + f'\n\n**{reacted}/{len(members)}** участвуют'
+    embed.add_field(name='Участники', value=value, inline=False)
     return embed
 
 class VzpBannerView(discord.ui.View):

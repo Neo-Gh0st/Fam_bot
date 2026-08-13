@@ -104,8 +104,8 @@ MOD_CHANNEL_ID = int(os.getenv('MOD_CHANNEL_ID', '1531246360895033543'))
 VZP_STATE_FILE = Path(__file__).with_name('vzp-state.json')
 VZP_DEF_IMAGE_FILE = Path(__file__).parent / 'assets' / 'def.png'
 VZP_ATTACK_IMAGE_FILE = Path(__file__).parent / 'assets' / 'attack.png'
-VZP_TEXT_BUTTON_ID = 'vzp_edit_text'
 VZP_REACT_BUTTON_ID = 'vzp_react'
+VZP_PING_ROLE_IDS = [int(x) for x in os.getenv('VZP_PING_ROLE_IDS', '1531246359712370819,1531246359712370818,1531246359712370811').split(',') if x]
 
 NVIDIA_API_KEY = os.getenv('NVIDIA_API_KEY')
 NVIDIA_API_URL = 'https://integrate.api.nvidia.com/v1/chat/completions'
@@ -1097,42 +1097,6 @@ def build_vzp_embed(entry: dict, guild: discord.Guild | None) -> discord.Embed:
     embed.add_field(name='Кто нажал', value=value, inline=False)
     return embed
 
-class VzpTextModal(discord.ui.Modal, title='VZP — текст на банере'):
-    text = discord.ui.TextInput(
-        label='Текст',
-        placeholder='Например: 7x7',
-        max_length=100,
-        required=False,
-    )
-
-    def __init__(self, message_id: int) -> None:
-        super().__init__()
-        self.message_id = message_id
-
-    async def on_submit(self, interaction: discord.Interaction) -> None:
-        try:
-            state = read_vzp_state()
-            entry = state.get(str(self.message_id))
-            if entry is None:
-                await interaction.response.send_message('Банер не найден.', ephemeral=True)
-                return
-            entry['text'] = str(self.text).strip()
-            write_vzp_state(state)
-            embed = build_vzp_embed(entry, interaction.guild)
-            await interaction.response.edit_message(
-                embed=embed,
-                view=VzpBannerView(),
-                attachments=[discord.File(vzp_image_file(entry.get('type') or 'def'), filename=vzp_image_file(entry.get('type') or 'def').name)],
-            )
-            asyncio.create_task(send_log(
-                '🛡 VZP: текст обновлён',
-                f'{interaction.user.mention} установил текст: **{entry["text"] or "—"}**',
-                color=0x38BDF8, user=interaction.user,
-            ))
-        except Exception as exc:
-            await interaction.response.send_message(f'Ошибка: {exc}', ephemeral=True)
-            print(f'[VZP MODAL ERROR] {exc}')
-
 class VzpBannerView(discord.ui.View):
     def __init__(self) -> None:
         super().__init__(timeout=None)
@@ -1158,10 +1122,6 @@ class VzpBannerView(discord.ui.View):
         except Exception as exc:
             await interaction.response.send_message(f'Ошибка: {exc}', ephemeral=True)
             print(f'[VZP REACT ERROR] {exc}')
-
-    @discord.ui.button(label='✏️ Текст', style=discord.ButtonStyle.secondary, custom_id=VZP_TEXT_BUTTON_ID)
-    async def text_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(VzpTextModal(interaction.message.id))
 
 class FamilyBot(commands.Bot):
     def __init__(self) -> None:
@@ -3091,10 +3051,14 @@ async def publish_vzp_banner(interaction: discord.Interaction, vzp_type: str, si
     entry = {'type': vzp_type, 'text': size, 'reacts': {}}
     embed = build_vzp_embed(entry, interaction.guild)
     view = VzpBannerView()
+    role_mentions = ' '.join(f'<@&{role_id}>' for role_id in VZP_PING_ROLE_IDS)
+    content = role_mentions if role_mentions else None
     await interaction.response.send_message(
+        content=content,
         embed=embed,
         view=view,
         file=discord.File(image_file, filename=image_file.name),
+        allowed_mentions=discord.AllowedMentions(roles=True, users=False),
     )
     message = await interaction.original_response()
     state = read_vzp_state()

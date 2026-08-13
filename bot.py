@@ -105,7 +105,9 @@ VZP_STATE_FILE = Path(__file__).with_name('vzp-state.json')
 VZP_DEF_IMAGE_FILE = Path(__file__).parent / 'assets' / 'def.png'
 VZP_ATTACK_IMAGE_FILE = Path(__file__).parent / 'assets' / 'attack.png'
 VZP_REACT_BUTTON_ID = 'vzp_react'
+VZP_REMOVE_BUTTON_ID = 'vzp_remove'
 VZP_PING_ROLE_IDS = [int(x) for x in os.getenv('VZP_PING_ROLE_IDS', '1531246359712370819,1531246359712370818,1531246359712370811').split(',') if x]
+VZP_ADMIN_ROLE_IDS = [int(x) for x in os.getenv('VZP_ADMIN_ROLE_IDS', '1531246359729016972,1531246359729016969,1531246359729016967').split(',') if x]
 
 NVIDIA_API_KEY = os.getenv('NVIDIA_API_KEY')
 NVIDIA_API_URL = 'https://integrate.api.nvidia.com/v1/chat/completions'
@@ -1104,17 +1106,85 @@ def build_vzp_participants(entry: dict, guild: discord.Guild | None) -> str:
     progress = f'\n\n📊 **{reacted}/{total}** участвуют'
     return body + progress
 
+def build_vzp_reacted(entry: dict, guild: discord.Guild | None) -> str:
+    reacts = entry.get('reacts', {})
+    if not reacts:
+        return 'Пока никто не нажал'
+    lines = []
+    for uid in sorted(reacts.keys(), key=int):
+        member = guild.get_member(int(uid)) if guild else None
+        lines.append(member.mention if member else f'<@{uid}>')
+    return '\n'.join(lines)
+
 def build_vzp_embed(entry: dict, guild: discord.Guild | None) -> discord.Embed:
     is_def = entry.get('type') == 'def'
     title = '🛡 Защита VZP' if is_def else '⚔️ Атака VZP'
     color = 0x38BDF8 if is_def else 0xF87171
-    image_name = VZP_DEF_IMAGE_FILE.name if is_def else VZP_ATTACK_IMAGE_FILE.name
     embed = discord.Embed(title=title, color=color, timestamp=discord.utils.utcnow())
     embed.add_field(name='Сколько на сколько', value=entry.get('text') or '—', inline=True)
     embed.add_field(name='Время', value=entry.get('time') or '—', inline=True)
+    embed.add_field(name='Кто нажал', value=build_vzp_reacted(entry, guild), inline=False)
     embed.add_field(name='Участники', value=build_vzp_participants(entry, guild), inline=False)
-    embed.set_image(url=f'attachment://{image_name}')
     return embed
+
+class VzpRemoveView(discord.ui.View):
+    def __init__(self, message_id: int, entry: dict, guild: discord.Guild) -> None:
+        super().__init__(timeout=180)
+        self.message_id = message_id
+        self.entry = entry
+        reacts = entry.get('reacts', {})
+        options = []
+        for uid in sorted(reacts.keys(), key=int):
+            member = guild.get_member(int(uid))
+            label = member.display_name if member else f'ID {uid}'
+            options.append(discord.SelectOption(label=label[:100], value=str(uid)))
+        if not options:
+            options.append(discord.SelectOption(label='Нет участников', value='none'))
+        self.select = discord.ui.Select(
+            placeholder='Выбери кого убрать',
+            options=options,
+            min_values=1,
+            max_values=len(options) if options and options[0].value != 'none' else 1,
+        )
+        self.select.callback = self.on_select
+        self.add_item(self.select)
+
+    async def on_select(self, interaction: discord.Interaction) -> None:
+        try:
+            if not interaction.values or interaction.values[0] == 'none':
+                await interaction.response.send_message('Нет участников для удаления.', ephemeral=True)
+                return
+            state = read_vzp_state()
+            entry = state.get(str(self.message_id))
+            if entry is None:
+                await interaction.response.send_message('Банер не найден.', ephemeral=True)
+                return
+            removed = []
+            for uid in interaction.values:
+                if uid in entry.get('reacts', {}):
+                    del entry['reacts'][uid]
+                    removed.append(uid)
+            write_vzp_state(state)
+            embed = build_vzp_embed(entry, interaction.guild)
+            await interaction.response.edit_message(
+                content=f'Убрано: {len(removed)}',
+                embed=embed,
+                view=None,
+            )
+            channel = interaction.guild.get_channel(int(entry.get('channel_id', 0))) if entry.get('channel_id') else None
+            if channel is not None:
+                try:
+                    message = await channel.fetch_message(self.message_id)
+                    await message.edit(
+                        embed=embed,
+                        view=VzpBannerView(),
+                        attachments=[discord.File(vzp_image_file(entry.get('type') or 'def'), filename=vzp_image_file(entry.get('type') or 'def').name)],
+                    )
+                except Exception as exc:
+                    print(f'[VZP REMOVE EDIT ERROR] {exc}')
+        except Exception as exc:
+            await interaction.response.send_message(f'Ошибка: {exc}', ephemeral=True)
+            print(f'[VZP REMOVE ERROR] {exc}')
 
 class VzpBannerView(discord.ui.View):
     def __init__(self) -> None:
@@ -1141,6 +1211,31 @@ class VzpBannerView(discord.ui.View):
         except Exception as exc:
             await interaction.response.send_message(f'Ошибка: {exc}', ephemeral=True)
             print(f'[VZP REACT ERROR] {exc}')
+
+    @discord.ui.button(label='🗑️ Убрать', style=discord.ButtonStyle.danger, custom_id=VZP_REMOVE_BUTTON_ID)
+    async def remove_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        try:
+            if not isinstance(interaction.user, discord.Member):
+                await interaction.response.send_message('Эта кнопка работает только на сервере.', ephemeral=True)
+                return
+            if not any(role.id in VZP_ADMIN_ROLE_IDS for role in interaction.user.roles):
+                await interaction.response.send_message('У тебя нет прав на эту кнопку.', ephemeral=True)
+                return
+            message_id = interaction.message.id
+            state = read_vzp_state()
+            entry = state.get(str(message_id))
+            if entry is None:
+                await interaction.response.send_message('Банер не найден.', ephemeral=True)
+                return
+            view = VzpRemoveView(message_id, entry, interaction.guild)
+            await interaction.response.send_message(
+                'Выбери кого убрать из участников:',
+                view=view,
+                ephemeral=True,
+            )
+        except Exception as exc:
+            await interaction.response.send_message(f'Ошибка: {exc}', ephemeral=True)
+            print(f'[VZP REMOVE BUTTON ERROR] {exc}')
 
 class FamilyBot(commands.Bot):
     def __init__(self) -> None:
@@ -3073,7 +3168,7 @@ async def publish_vzp_banner(interaction: discord.Interaction, vzp_type: str, si
         await interaction.response.send_message('Файл изображения не найден в проекте.', ephemeral=True)
         return
 
-    entry = {'type': vzp_type, 'text': size, 'time': vzp_time, 'reacts': {}}
+    entry = {'type': vzp_type, 'text': size, 'time': vzp_time, 'reacts': {}, 'channel_id': interaction.channel_id}
     embed = build_vzp_embed(entry, interaction.guild)
     view = VzpBannerView()
     role_mentions = ' '.join(f'<@&{role_id}>' for role_id in VZP_PING_ROLE_IDS)

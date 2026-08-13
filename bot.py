@@ -1083,7 +1083,8 @@ def build_vzp_embed(entry: dict, guild: discord.Guild | None) -> discord.Embed:
     image_name = VZP_DEF_IMAGE_FILE.name if is_def else VZP_ATTACK_IMAGE_FILE.name
     embed = discord.Embed(title=title, color=color, timestamp=discord.utils.utcnow())
     embed.set_image(url=f'attachment://{image_name}')
-    embed.add_field(name='Текст', value=entry.get('text') or '—', inline=False)
+    embed.add_field(name='Размер', value=entry.get('text') or '—', inline=True)
+    embed.add_field(name='Время', value=entry.get('time') or '—', inline=True)
     reacts = entry.get('reacts', {})
     if reacts:
         lines = []
@@ -3030,16 +3031,22 @@ class VzpCreateModal(discord.ui.Modal, title='VZP — сколько на ско
         placeholder='Например: 7x7',
         max_length=50,
     )
+    time = discord.ui.TextInput(
+        label='Время',
+        placeholder='Например: 20:00',
+        max_length=50,
+        required=False,
+    )
 
     def __init__(self, vzp_type: str) -> None:
         super().__init__()
         self.vzp_type = vzp_type
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
-        await publish_vzp_banner(interaction, self.vzp_type, str(self.size).strip())
+        await publish_vzp_banner(interaction, self.vzp_type, str(self.size).strip(), str(self.time).strip())
 
 
-async def publish_vzp_banner(interaction: discord.Interaction, vzp_type: str, size: str = '') -> None:
+async def publish_vzp_banner(interaction: discord.Interaction, vzp_type: str, size: str = '', vzp_time: str = '') -> None:
     if not isinstance(interaction.user, discord.Member) or not interaction.user.guild_permissions.manage_guild:
         await interaction.response.send_message('Нужны права «Управление сервером».', ephemeral=True)
         return
@@ -3048,7 +3055,7 @@ async def publish_vzp_banner(interaction: discord.Interaction, vzp_type: str, si
         await interaction.response.send_message('Файл изображения не найден в проекте.', ephemeral=True)
         return
 
-    entry = {'type': vzp_type, 'text': size, 'reacts': {}}
+    entry = {'type': vzp_type, 'text': size, 'time': vzp_time, 'reacts': {}}
     embed = build_vzp_embed(entry, interaction.guild)
     view = VzpBannerView()
     role_mentions = ' '.join(f'<@&{role_id}>' for role_id in VZP_PING_ROLE_IDS)
@@ -3066,7 +3073,7 @@ async def publish_vzp_banner(interaction: discord.Interaction, vzp_type: str, si
     write_vzp_state(state)
     asyncio.create_task(send_log(
         '🛡 VZP банер создан',
-        f'{interaction.user.mention} создал банер **{"Защита" if vzp_type == "def" else "Атака"}** (размер: **{size or "—"}**) в {interaction.channel.mention if interaction.channel else ""}',
+        f'{interaction.user.mention} создал банер **{"Защита" if vzp_type == "def" else "Атака"}** (размер: **{size or "—"}**, время: **{vzp_time or "—"}**) в {interaction.channel.mention if interaction.channel else ""}',
         color=0x38BDF8, user=interaction.user,
     ))
 

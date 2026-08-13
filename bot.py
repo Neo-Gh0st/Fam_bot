@@ -1096,10 +1096,13 @@ def build_vzp_participants(entry: dict, guild: discord.Guild | None) -> str:
             lines.append(f'{indicator} {m.mention}')
         total += len(members)
         reacted += sum(1 for m in members if str(m.id) in reacts)
-        sections.append(f'**Тир{idx} ⬇️** ({len(members)})\n' + '\n'.join(lines))
+        divider = '─' * 20
+        sections.append(f'**Тир {idx}** ─ {len(members)} чел.\n{divider}\n' + '\n'.join(lines))
     if not sections:
         return 'Нет участников'
-    return '\n\n'.join(sections) + f'\n\n**{reacted}/{total}** участвуют'
+    body = '\n\n'.join(sections)
+    progress = f'\n\n📊 **{reacted}/{total}** участвуют'
+    return body + progress
 
 def build_vzp_embed(entry: dict, guild: discord.Guild | None) -> discord.Embed:
     is_def = entry.get('type') == 'def'
@@ -1107,15 +1110,11 @@ def build_vzp_embed(entry: dict, guild: discord.Guild | None) -> discord.Embed:
     color = 0x38BDF8 if is_def else 0xF87171
     image_name = VZP_DEF_IMAGE_FILE.name if is_def else VZP_ATTACK_IMAGE_FILE.name
     embed = discord.Embed(title=title, color=color, timestamp=discord.utils.utcnow())
+    embed.add_field(name='📏 Размер', value=entry.get('text') or '—', inline=True)
+    embed.add_field(name='⏰ Время', value=entry.get('time') or '—', inline=True)
+    embed.add_field(name='👥 Участники', value=build_vzp_participants(entry, guild), inline=False)
     embed.set_image(url=f'attachment://{image_name}')
-    embed.add_field(name='Размер', value=entry.get('text') or '—', inline=True)
-    embed.add_field(name='Время', value=entry.get('time') or '—', inline=True)
     return embed
-
-def build_vzp_embeds(entry: dict, guild: discord.Guild | None) -> list[discord.Embed]:
-    embed = build_vzp_embed(entry, guild)
-    participants = discord.Embed(color=embed.color, description=build_vzp_participants(entry, guild))
-    return [embed, participants]
 
 class VzpBannerView(discord.ui.View):
     def __init__(self) -> None:
@@ -1133,9 +1132,9 @@ class VzpBannerView(discord.ui.View):
             uid = str(interaction.user.id)
             entry.setdefault('reacts', {})[uid] = 1
             write_vzp_state(state)
-            embeds = build_vzp_embeds(entry, interaction.guild)
+            embed = build_vzp_embed(entry, interaction.guild)
             await interaction.response.edit_message(
-                embeds=embeds,
+                embed=embed,
                 view=VzpBannerView(),
                 attachments=[discord.File(vzp_image_file(entry.get('type') or 'def'), filename=vzp_image_file(entry.get('type') or 'def').name)],
             )
@@ -3075,13 +3074,13 @@ async def publish_vzp_banner(interaction: discord.Interaction, vzp_type: str, si
         return
 
     entry = {'type': vzp_type, 'text': size, 'time': vzp_time, 'reacts': {}}
-    embeds = build_vzp_embeds(entry, interaction.guild)
+    embed = build_vzp_embed(entry, interaction.guild)
     view = VzpBannerView()
     role_mentions = ' '.join(f'<@&{role_id}>' for role_id in VZP_PING_ROLE_IDS)
     content = role_mentions if role_mentions else None
     await interaction.response.send_message(
         content=content,
-        embeds=embeds,
+        embed=embed,
         view=view,
         file=discord.File(image_file, filename=image_file.name),
         allowed_mentions=discord.AllowedMentions(roles=True, users=False),

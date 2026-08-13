@@ -1078,34 +1078,6 @@ def write_vzp_state(data: dict) -> None:
 def vzp_image_file(vzp_type: str) -> Path:
     return VZP_DEF_IMAGE_FILE if vzp_type == 'def' else VZP_ATTACK_IMAGE_FILE
 
-def build_vzp_participants(entry: dict, guild: discord.Guild | None) -> str:
-    if not guild:
-        return 'Нет участников'
-    reacts = entry.get('reacts', {})
-    tier_ids = VZP_PING_ROLE_IDS
-    sections = []
-    total = 0
-    reacted = 0
-    for idx, role_id in enumerate(tier_ids, start=1):
-        role = guild.get_role(role_id)
-        members = [m for m in guild.members if not m.bot and any(r.id == role_id for r in m.roles)]
-        if not members:
-            continue
-        members.sort(key=lambda m: m.display_name.casefold())
-        lines = []
-        for m in members:
-            indicator = '🟢' if str(m.id) in reacts else '🔴'
-            lines.append(f'{indicator} {m.mention}')
-        total += len(members)
-        reacted += sum(1 for m in members if str(m.id) in reacts)
-        divider = '─' * 20
-        sections.append(f'**Тир {idx}** ─ {len(members)} чел.\n{divider}\n' + '\n'.join(lines))
-    if not sections:
-        return 'Нет участников'
-    body = '\n\n'.join(sections)
-    progress = f'\n\n📊 **{reacted}/{total}** участвуют'
-    return body + progress
-
 def build_vzp_reacted(entry: dict, guild: discord.Guild | None) -> str:
     reacts = entry.get('reacts', {})
     if not reacts:
@@ -1120,11 +1092,12 @@ def build_vzp_embed(entry: dict, guild: discord.Guild | None) -> discord.Embed:
     is_def = entry.get('type') == 'def'
     title = '🛡 Защита VZP' if is_def else '⚔️ Атака VZP'
     color = 0x38BDF8 if is_def else 0xF87171
+    image_name = VZP_DEF_IMAGE_FILE.name if is_def else VZP_ATTACK_IMAGE_FILE.name
     embed = discord.Embed(title=title, color=color, timestamp=discord.utils.utcnow())
     embed.add_field(name='Сколько на сколько', value=entry.get('text') or '—', inline=True)
     embed.add_field(name='Время', value=entry.get('time') or '—', inline=True)
     embed.add_field(name='Кто нажал', value=build_vzp_reacted(entry, guild), inline=False)
-    embed.add_field(name='Участники', value=build_vzp_participants(entry, guild), inline=False)
+    embed.set_image(url=f'attachment://{image_name}')
     return embed
 
 class VzpRemoveView(discord.ui.View):

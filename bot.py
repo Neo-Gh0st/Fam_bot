@@ -1124,7 +1124,8 @@ class VzpRemoveView(discord.ui.View):
 
     async def on_select(self, interaction: discord.Interaction) -> None:
         try:
-            if not interaction.values or interaction.values[0] == 'none':
+            values = (interaction.data or {}).get('values', [])
+            if not values or values[0] == 'none':
                 await interaction.response.send_message('Нет участников для удаления.', ephemeral=True)
                 return
             state = read_vzp_state()
@@ -1133,7 +1134,7 @@ class VzpRemoveView(discord.ui.View):
                 await interaction.response.send_message('Банер не найден.', ephemeral=True)
                 return
             removed = []
-            for uid in interaction.values:
+            for uid in values:
                 if uid in entry.get('reacts', {}):
                     del entry['reacts'][uid]
                     removed.append(uid)

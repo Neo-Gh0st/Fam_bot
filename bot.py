@@ -54,9 +54,10 @@ try:
 except (OSError, ValueError, AttributeError):
     BOT_IMAGE_URL = None
 
-THUMBNAIL_URL = BOT_IMAGE_URL
-MAIN_IMAGE_URL = BOT_IMAGE_URL
-WELCOME_IMAGE_URL = BOT_IMAGE_URL
+if BOT_IMAGE_URL:
+    THUMBNAIL_URL = BOT_IMAGE_URL
+    MAIN_IMAGE_URL = BOT_IMAGE_URL
+    WELCOME_IMAGE_URL = BOT_IMAGE_URL
 ADMIN_PANEL_CHANNEL_ID = int(os.getenv('ADMIN_PANEL_CHANNEL_ID', '1523819460538925086'))
 MEETING_ROLE_ID = int(os.getenv('MEETING_ROLE_ID', '0'))
 MEETING_VOICE_CHANNEL_ID = int(os.getenv('MEETING_VOICE_CHANNEL_ID', '1342078486419869762'))
@@ -1268,19 +1269,11 @@ def sort_members(members):
     return sorted(members, key=lambda m: m.display_name.casefold())
 
 def has_recruit_role(member: discord.Member) -> bool:
-    """Allow anyone with the recruit role or any role above it in ROLE_ORDER."""
-    role_ids_in_order = [r.role_id for r in ROLE_ORDER]
-    try:
-        recruit_index = role_ids_in_order.index(RECRUIT_ROLE_ID)
-    except ValueError:
-        return any(role.id == RECRUIT_ROLE_ID for role in member.roles)
-
+    """Allow anyone with the recruit role or any family role above it."""
     member_role_ids = {role.id for role in member.roles}
-    # Check if member has the recruit role OR any role higher in ROLE_ORDER
-    for idx, rid in enumerate(role_ids_in_order):
-        if idx <= recruit_index and rid in member_role_ids:
-            return True
-    return False
+    if RECRUIT_ROLE_ID in member_role_ids:
+        return True
+    return any(r.role_id in member_role_ids for r in ROLE_ORDER)
 
 
 async def get_text_channel(channel_id: int) -> discord.TextChannel:
@@ -1581,6 +1574,10 @@ async def auto_birthday_greeting() -> None:
             today_day = today.day
             today_month = today.month
 
+            # Сброс приветствий при наступлении нового дня (до проверки, чтобы не было дублей)
+            if today.hour == 0:
+                GREETED_TODAY.clear()
+
             state = read_birthday_state()
             entries = state.get('entries', {})
 
@@ -1626,10 +1623,6 @@ async def auto_birthday_greeting() -> None:
                         print(f'[BIRTHDAY] Greeted {member.display_name} in #{channel.name}')
                     except Exception as exc:
                         print(f'[BIRTHDAY] Failed to greet {member}: {exc}')
-
-            # Сброс приветствий в полночь
-            if today.hour == 0 and len(GREETED_TODAY) > 0:
-                GREETED_TODAY.clear()
 
         except Exception as exc:
             print(f'[BIRTHDAY] Auto-greeting error: {exc}')
@@ -2958,12 +2951,10 @@ async def test_cmd(interaction: discord.Interaction) -> None:
 
 # --------------- Бот запускается ---------------
 
-import time as _time
-
 while True:
     try:
         bot.run(BOT_TOKEN)
         break
     except Exception:
-        _time.sleep(30)
+        time.sleep(30)
 

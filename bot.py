@@ -1106,8 +1106,12 @@ def build_vzp_embed(entry: dict, guild: discord.Guild | None) -> discord.Embed:
     tags = build_vzp_tier_tags(guild)
     if tags:
         embed.add_field(name='Теги', value=tags, inline=False)
-    embed.add_field(name='Сколько на сколько', value=entry.get('text') or '—', inline=True)
-    embed.add_field(name='Время', value=entry.get('time') or '—', inline=True)
+    size = entry.get('size')
+    size_label = 'Размер защиты' if is_def else 'Размер атаки'
+    if size and str(size).isdigit():
+        embed.add_field(name=size_label, value=f'( {size} для {size}x{size} )', inline=True)
+    else:
+        embed.add_field(name=size_label, value=entry.get('text') or '—', inline=True)
     embed.add_field(name='Кто нажал', value=build_vzp_reacted(entry, guild), inline=False)
     embed.set_image(url=f'attachment://{image_name}')
     return embed
@@ -3131,17 +3135,11 @@ async def test_cmd(interaction: discord.Interaction) -> None:
     await interaction.response.send_message('Привет', ephemeral=True)
 
 
-class VzpCreateModal(discord.ui.Modal, title='VZP — сколько на сколько'):
+class VzpCreateModal(discord.ui.Modal, title='VZP — размер'):
     size = discord.ui.TextInput(
         label='Размер',
-        placeholder='Например: 7x7',
+        placeholder='Например: 7',
         max_length=50,
-    )
-    time = discord.ui.TextInput(
-        label='Время',
-        placeholder='Например: 20:00',
-        max_length=50,
-        required=False,
     )
 
     def __init__(self, vzp_type: str) -> None:
@@ -3149,19 +3147,22 @@ class VzpCreateModal(discord.ui.Modal, title='VZP — сколько на ско
         self.vzp_type = vzp_type
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
-        await publish_vzp_banner(interaction, self.vzp_type, str(self.size).strip(), str(self.time).strip())
+        await publish_vzp_banner(interaction, self.vzp_type, int(str(self.size).strip() or 0))
 
 
-async def publish_vzp_banner(interaction: discord.Interaction, vzp_type: str, size: str = '', vzp_time: str = '') -> None:
+async def publish_vzp_banner(interaction: discord.Interaction, vzp_type: str, size: int = 0) -> None:
     if not isinstance(interaction.user, discord.Member) or not any(role.id == VZP_CREATOR_ROLE_ID for role in interaction.user.roles):
         await interaction.response.send_message('Нужна роль для создания банера VZP.', ephemeral=True)
+        return
+    if size < 1:
+        await interaction.response.send_message('Размер должен быть положительным числом.', ephemeral=True)
         return
     image_file = vzp_image_file(vzp_type)
     if not image_file.is_file():
         await interaction.response.send_message('Файл изображения не найден в проекте.', ephemeral=True)
         return
 
-    entry = {'type': vzp_type, 'text': size, 'time': vzp_time, 'reacts': {}, 'channel_id': interaction.channel_id}
+    entry = {'type': vzp_type, 'size': size, 'reacts': {}, 'channel_id': interaction.channel_id}
     embed = build_vzp_embed(entry, interaction.guild)
     view = VzpBannerView()
     await interaction.response.send_message(
@@ -3176,25 +3177,31 @@ async def publish_vzp_banner(interaction: discord.Interaction, vzp_type: str, si
     write_vzp_state(state)
     asyncio.create_task(send_log(
         '🛡 VZP банер создан',
-        f'{interaction.user.mention} создал банер **{"Защита" if vzp_type == "def" else "Атака"}** (размер: **{size or "—"}**, время: **{vzp_time or "—"}**) в {interaction.channel.mention if interaction.channel else ""}',
+        f'{interaction.user.mention} создал банер **{"Защита" if vzp_type == "def" else "Атака"}** (размер: **{size}x{size}**) в {interaction.channel.mention if interaction.channel else ""}',
         color=0x38BDF8, user=interaction.user,
     ))
 
 
 @bot.tree.command(name='vzp_def', description='Отправить банер защиты VZP')
-async def vzp_def_cmd(interaction: discord.Interaction) -> None:
+async def vzp_def_cmd(interaction: discord.Interaction, size: int) -> None:
     if not isinstance(interaction.user, discord.Member) or not any(role.id == VZP_CREATOR_ROLE_ID for role in interaction.user.roles):
         await interaction.response.send_message('Нужна роль для создания банера VZP.', ephemeral=True)
         return
-    await interaction.response.send_modal(VzpCreateModal('def'))
+    if size < 1:
+        await interaction.response.send_message('Размер должен быть положительным числом.', ephemeral=True)
+        return
+    await publish_vzp_banner(interaction, 'def', size)
 
 
 @bot.tree.command(name='vzp_attack', description='Отправить банер атаки VZP')
-async def vzp_attack_cmd(interaction: discord.Interaction) -> None:
+async def vzp_attack_cmd(interaction: discord.Interaction, size: int) -> None:
     if not isinstance(interaction.user, discord.Member) or not any(role.id == VZP_CREATOR_ROLE_ID for role in interaction.user.roles):
         await interaction.response.send_message('Нужна роль для создания банера VZP.', ephemeral=True)
         return
-    await interaction.response.send_modal(VzpCreateModal('attack'))
+    if size < 1:
+        await interaction.response.send_message('Размер должен быть положительным числом.', ephemeral=True)
+        return
+    await publish_vzp_banner(interaction, 'attack', size)
 
 
 # --------------- Бот запускается ---------------

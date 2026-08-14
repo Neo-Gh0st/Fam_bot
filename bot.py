@@ -672,16 +672,16 @@ class AppModalPartTwo(discord.ui.Modal, title='Заявка: Часть 2'):
             name=f'{interaction.user.display_name} ({interaction.user.name})',
             icon_url=interaction.user.display_avatar.url if interaction.user.display_avatar else None,
         )
-        admin_embed.add_field(name='Участник', value=interaction.user.mention, inline=True)
-        admin_embed.add_field(name='Тип заявки', value=f'**{app_type}**', inline=True)
-        admin_embed.add_field(name='Имя Фамилия (IC)', value=data.get('name', '—'), inline=True)
-        admin_embed.add_field(name='Уровень в игре', value=data.get('level', '—'), inline=True)
-        admin_embed.add_field(name='Возраст (OOC)', value=data.get('age', '—'), inline=True)
-        admin_embed.add_field(name='Знания РП', value=data.get('rp', '—'), inline=True)
+        admin_embed.add_field(name='Участник', value=interaction.user.mention, inline=False)
+        admin_embed.add_field(name='Тип заявки', value=f'**{app_type}**', inline=False)
+        admin_embed.add_field(name='Имя Фамилия (IC)', value=data.get('name', '—'), inline=False)
+        admin_embed.add_field(name='Уровень в игре', value=data.get('level', '—'), inline=False)
+        admin_embed.add_field(name='Возраст (OOC)', value=data.get('age', '—'), inline=False)
+        admin_embed.add_field(name='Знания РП', value=data.get('rp', '—'), inline=False)
         admin_embed.add_field(name='Почему к нам', value=data.get('why', '—'), inline=False)
-        admin_embed.add_field(name='Смена фамилии', value=data.get('surname', '—'), inline=True)
-        admin_embed.add_field(name='Соблюдение правил', value=data.get('rules', '—'), inline=True)
-        admin_embed.add_field(name='Прайм тайм', value=data.get('prime', '—'), inline=True)
+        admin_embed.add_field(name='Смена фамилии', value=data.get('surname', '—'), inline=False)
+        admin_embed.add_field(name='Соблюдение правил', value=data.get('rules', '—'), inline=False)
+        admin_embed.add_field(name='Прайм тайм', value=data.get('prime', '—'), inline=False)
         admin_embed.set_footer(text=f'ID: {interaction.user.id}')
 
         # Отправляем в канал заявок администрации
@@ -758,6 +758,70 @@ class AppModalPartOne(discord.ui.Modal, title='Заявка: Часть 1'):
         await interaction.response.send_message(embed=step2_embed, view=view, ephemeral=True)
 
 
+class VzpAppModal(discord.ui.Modal, title='Заявка: VZP'):
+    q1 = discord.ui.TextInput(label='Имя (IC)', placeholder='Иван Иванов', style=discord.TextStyle.short)
+    q2 = discord.ui.TextInput(label='Возраст (OOC)', placeholder='Например: 20', style=discord.TextStyle.short)
+    q3 = discord.ui.TextInput(label='Есть ли у вас опыт в VZP?', placeholder='Да/Нет', style=discord.TextStyle.short)
+    q4 = discord.ui.TextInput(label='Откат игры (DM 15x15) или (откат VZP)', placeholder='Ваш ответ...', style=discord.TextStyle.paragraph)
+    q5 = discord.ui.TextInput(label='В каких семьях играли ранее?', placeholder='Ваш ответ...', style=discord.TextStyle.paragraph)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        family_applications[interaction.user.id] = {
+            'type': 'VZP',
+            'name': self.q1.value,
+            'age': self.q2.value,
+            'vzp_experience': self.q3.value,
+            'rollback': self.q4.value,
+            'previous_families': self.q5.value,
+        }
+
+        admin_embed = discord.Embed(
+            title='📋 Новая заявка в семью CENT (VZP)',
+            color=0x3B82F6,
+            timestamp=discord.utils.utcnow(),
+        )
+        admin_embed.set_author(
+            name=f'{interaction.user.display_name} ({interaction.user.name})',
+            icon_url=interaction.user.display_avatar.url if interaction.user.display_avatar else None,
+        )
+        admin_embed.add_field(name='Участник', value=interaction.user.mention, inline=False)
+        admin_embed.add_field(name='Тип заявки', value='**VZP**', inline=False)
+        admin_embed.add_field(name='Имя (IC)', value=family_applications[interaction.user.id].get('name', '—'), inline=False)
+        admin_embed.add_field(name='Возраст (OOC)', value=family_applications[interaction.user.id].get('age', '—'), inline=False)
+        admin_embed.add_field(name='Опыт в VZP', value=family_applications[interaction.user.id].get('vzp_experience', '—'), inline=False)
+        admin_embed.add_field(name='Откат игры', value=family_applications[interaction.user.id].get('rollback', '—'), inline=False)
+        admin_embed.add_field(name='Семьи ранее', value=family_applications[interaction.user.id].get('previous_families', '—'), inline=False)
+        admin_embed.set_footer(text=f'ID: {interaction.user.id}')
+
+        target_channel_id = APP_LOG_CHANNEL_ID or RECRUIT_APP_LIST_CHANNEL_ID or LOG_CHANNEL_ID
+        if target_channel_id:
+            try:
+                log_chan = bot.get_channel(target_channel_id)
+                if log_chan is None:
+                    log_chan = await bot.fetch_channel(target_channel_id)
+                if isinstance(log_chan, discord.TextChannel):
+                    await log_chan.send(embed=admin_embed, view=FamilyAppDecisionView(interaction.user.id))
+            except Exception as exc:
+                print(f'[APP LOG ERROR] {exc}')
+
+        asyncio.create_task(send_log(
+            '📋 Заявка в семью подана',
+            fields=[
+                ('Участник', _log_user_field(interaction.user), True),
+                ('Тип заявки', 'VZP', True),
+            ],
+            color=0x22C55E, user=interaction.user,
+        ))
+
+        final_embed = discord.Embed(
+            title='✅ Заявка отправлена!',
+            description='Ваша заявка успешно заполнена и передана администрации семьи **CENT**.\nОжидайте ответа!',
+            color=0x22C55E,
+        )
+        final_embed.set_footer(text='Форма заявки')
+        await interaction.response.send_message(embed=final_embed, ephemeral=True)
+
+
 class ApplicationCreateView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -781,7 +845,7 @@ class ApplicationCreateView(discord.ui.View):
     @discord.ui.button(label='VZP', style=discord.ButtonStyle.secondary, emoji='🔫', custom_id='app_create_vzp')
     async def create_vzp_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
-            await interaction.response.send_modal(AppModalPartOne(app_type='VZP'))
+            await interaction.response.send_modal(VzpAppModal())
         except discord.NotFound:
             return
         except discord.HTTPException as exc:

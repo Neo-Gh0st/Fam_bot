@@ -107,6 +107,7 @@ VZP_ATTACK_IMAGE_FILE = Path(__file__).parent / 'assets' / 'attack.png'
 VZP_REACT_BUTTON_ID = 'vzp_react'
 VZP_REMOVE_BUTTON_ID = 'vzp_remove'
 VZP_PING_ROLE_IDS = [int(x) for x in os.getenv('VZP_PING_ROLE_IDS', '1531246359712370819,1531246359712370818,1531246359712370811').split(',') if x]
+VZP_CREATOR_ROLE_ID = int(os.getenv('VZP_CREATOR_ROLE_ID', '1532160160330551478'))
 VZP_ADMIN_ROLE_IDS = [int(x) for x in os.getenv('VZP_ADMIN_ROLE_IDS', '1531246359729016972,1531246359729016969,1531246359729016967').split(',') if x]
 
 NVIDIA_API_KEY = os.getenv('NVIDIA_API_KEY')
@@ -3152,8 +3153,8 @@ class VzpCreateModal(discord.ui.Modal, title='VZP — сколько на ско
 
 
 async def publish_vzp_banner(interaction: discord.Interaction, vzp_type: str, size: str = '', vzp_time: str = '') -> None:
-    if not isinstance(interaction.user, discord.Member) or not interaction.user.guild_permissions.manage_guild:
-        await interaction.response.send_message('Нужны права «Управление сервером».', ephemeral=True)
+    if not isinstance(interaction.user, discord.Member) or not any(role.id == VZP_CREATOR_ROLE_ID for role in interaction.user.roles):
+        await interaction.response.send_message('Нужна роль для создания банера VZP.', ephemeral=True)
         return
     image_file = vzp_image_file(vzp_type)
     if not image_file.is_file():
@@ -3182,16 +3183,16 @@ async def publish_vzp_banner(interaction: discord.Interaction, vzp_type: str, si
 
 @bot.tree.command(name='vzp_def', description='Отправить банер защиты VZP')
 async def vzp_def_cmd(interaction: discord.Interaction) -> None:
-    if not isinstance(interaction.user, discord.Member) or not interaction.user.guild_permissions.manage_guild:
-        await interaction.response.send_message('Нужны права «Управление сервером».', ephemeral=True)
+    if not isinstance(interaction.user, discord.Member) or not any(role.id == VZP_CREATOR_ROLE_ID for role in interaction.user.roles):
+        await interaction.response.send_message('Нужна роль для создания банера VZP.', ephemeral=True)
         return
     await interaction.response.send_modal(VzpCreateModal('def'))
 
 
 @bot.tree.command(name='vzp_attack', description='Отправить банер атаки VZP')
 async def vzp_attack_cmd(interaction: discord.Interaction) -> None:
-    if not isinstance(interaction.user, discord.Member) or not interaction.user.guild_permissions.manage_guild:
-        await interaction.response.send_message('Нужны права «Управление сервером».', ephemeral=True)
+    if not isinstance(interaction.user, discord.Member) or not any(role.id == VZP_CREATOR_ROLE_ID for role in interaction.user.roles):
+        await interaction.response.send_message('Нужна роль для создания банера VZP.', ephemeral=True)
         return
     await interaction.response.send_modal(VzpCreateModal('attack'))
 

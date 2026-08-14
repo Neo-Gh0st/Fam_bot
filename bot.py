@@ -1109,7 +1109,7 @@ def build_vzp_embed(entry: dict, guild: discord.Guild | None) -> discord.Embed:
     size = entry.get('size')
     size_label = 'Размер защиты' if is_def else 'Размер атаки'
     if size and str(size).isdigit():
-        embed.add_field(name=size_label, value=f'( {size} для {size}x{size} )', inline=True)
+        embed.add_field(name=size_label, value=f'{size}x{size}', inline=True)
     else:
         embed.add_field(name=size_label, value=entry.get('text') or '—', inline=True)
     embed.add_field(name='Кто нажал', value=build_vzp_reacted(entry, guild), inline=False)

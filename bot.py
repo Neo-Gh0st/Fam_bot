@@ -529,15 +529,19 @@ class FamilyAppDecisionView(discord.ui.View):
 
         guild = interaction.guild
         applicant = guild.get_member(self.applicant_id)
+        if applicant is None and guild is not None:
+            try:
+                applicant = await guild.fetch_member(self.applicant_id)
+            except Exception:
+                applicant = None
         roles_to_add = [CENT_ROLE_ID, CENT_ACCEPT_EXTRA_ROLE_ID]
         if applicant:
             try:
-                await applicant.add_roles(
-                    *[r for r in roles_to_add if guild.get_role(r) is not None],
-                    reason=f'Заявка принята {interaction.user}',
-                )
-            except Exception:
-                pass
+                granted = [guild.get_role(r) for r in roles_to_add if guild.get_role(r) is not None]
+                await applicant.add_roles(*granted, reason=f'Заявка принята {interaction.user}')
+                print(f'[FAMILY ACCEPT] roles granted: {[r.id for r in granted]} to {applicant}')
+            except Exception as exc:
+                print(f'[FAMILY ACCEPT ROLE ERROR] {type(exc).__name__}: {exc}')
 
         if applicant:
             try:
@@ -1321,6 +1325,7 @@ class FamilyBot(commands.Bot):
         self.add_view(BirthdayButtonView())
         self.add_view(BlacklistView())
         self.add_view(ApplicationCreateView())
+        self.add_view(FamilyAppDecisionView(0))
         self.add_view(TicketAdminView())
         self.add_view(RecruitAppBannerView())
         self.add_view(AdminPanelView())

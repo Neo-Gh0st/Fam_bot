@@ -501,6 +501,7 @@ class RecruitView(discord.ui.View):
 
 FRIEND_ROLE_ID = 1531246359674487040
 CENT_ROLE_ID = 1532160160330551478
+CENT_ACCEPT_EXTRA_ROLE_ID = 1531246359712370812
 
 # Хранилище собранных данных заявки по user_id
 family_applications: dict[int, dict] = {}
@@ -528,10 +529,13 @@ class FamilyAppDecisionView(discord.ui.View):
 
         guild = interaction.guild
         applicant = guild.get_member(self.applicant_id)
-        cent_role = guild.get_role(CENT_ROLE_ID)
-        if applicant and cent_role:
+        roles_to_add = [CENT_ROLE_ID, CENT_ACCEPT_EXTRA_ROLE_ID]
+        if applicant:
             try:
-                await applicant.add_roles(cent_role, reason=f'Заявка принята {interaction.user}')
+                await applicant.add_roles(
+                    *[r for r in roles_to_add if guild.get_role(r) is not None],
+                    reason=f'Заявка принята {interaction.user}',
+                )
             except Exception:
                 pass
 

@@ -779,11 +779,94 @@ class AppModalPartOne(discord.ui.Modal, title='Заявка: Часть 1'):
         await interaction.response.send_message(embed=step2_embed, view=view, ephemeral=True)
 
 
+class VzpRollbackLinkModal(discord.ui.Modal, title='Ссылка на откат'):
+    link = discord.ui.TextInput(
+        label='Ссылка на откат',
+        placeholder='Вставь ссылку на запись отката',
+        style=discord.TextStyle.paragraph,
+        required=True,
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        family_applications[interaction.user.id]['rollback_link'] = self.link.value.strip()
+        await finalize_vzp_application(interaction)
+
+
+class VzpRollbackTypeView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=300)
+
+    @discord.ui.select(
+        placeholder='Выбери тип отката',
+        options=[
+            discord.SelectOption(label='DM 15x15', value='dm', emoji='🎮'),
+            discord.SelectOption(label='Откат с VZP', value='vzp', emoji='📼'),
+        ],
+        custom_id='vzp_rollback_type',
+    )
+    async def rollback_select(self, interaction: discord.Interaction, select: discord.ui.Select):
+        family_applications[interaction.user.id]['rollback_type'] = select.values[0]
+        await interaction.response.send_modal(VzpRollbackLinkModal())
+
+
+async def finalize_vzp_application(interaction: discord.Interaction) -> None:
+    data = family_applications.get(interaction.user.id, {})
+    rollback_type = data.get('rollback_type')
+    rollback_label = 'DM 15x15' if rollback_type == 'dm' else 'Откат с VZP'
+    rollback_link = data.get('rollback_link') or '—'
+    rollback_value = f'{rollback_label}\nСсылка: {rollback_link}'
+
+    admin_embed = discord.Embed(
+        title='📋 Новая заявка в семью CENT (VZP)',
+        color=0x3B82F6,
+        timestamp=discord.utils.utcnow(),
+    )
+    admin_embed.set_author(
+        name=f'{interaction.user.display_name} ({interaction.user.name})',
+        icon_url=interaction.user.display_avatar.url if interaction.user.display_avatar else None,
+    )
+    admin_embed.add_field(name='Участник', value=interaction.user.mention, inline=False)
+    admin_embed.add_field(name='Тип заявки', value='**VZP**', inline=False)
+    admin_embed.add_field(name='Имя (IC)', value=data.get('name', '—'), inline=False)
+    admin_embed.add_field(name='Возраст (OOC)', value=data.get('age', '—'), inline=False)
+    admin_embed.add_field(name='Опыт в VZP', value=data.get('vzp_experience', '—'), inline=False)
+    admin_embed.add_field(name='Откат', value=rollback_value, inline=False)
+    admin_embed.add_field(name='Семьи ранее', value=data.get('previous_families', '—'), inline=False)
+    admin_embed.set_footer(text=f'ID: {interaction.user.id}')
+
+    target_channel_id = APP_LOG_CHANNEL_ID or RECRUIT_APP_LIST_CHANNEL_ID or LOG_CHANNEL_ID
+    if target_channel_id:
+        try:
+            log_chan = bot.get_channel(target_channel_id)
+            if log_chan is None:
+                log_chan = await bot.fetch_channel(target_channel_id)
+            if isinstance(log_chan, discord.TextChannel):
+                await log_chan.send(embed=admin_embed, view=FamilyAppDecisionView(interaction.user.id))
+        except Exception as exc:
+            print(f'[APP LOG ERROR] {exc}')
+
+    asyncio.create_task(send_log(
+        '📋 Заявка в семью подана',
+        fields=[
+            ('Участник', _log_user_field(interaction.user), True),
+            ('Тип заявки', 'VZP', True),
+        ],
+        color=0x22C55E, user=interaction.user,
+    ))
+
+    final_embed = discord.Embed(
+        title='✅ Заявка отправлена!',
+        description='Ваша заявка успешно заполнена и передана администрации семьи **CENT**.\nОжидайте ответа!',
+        color=0x22C55E,
+    )
+    final_embed.set_footer(text='Форма заявки')
+    await interaction.response.send_message(embed=final_embed, ephemeral=True)
+
+
 class VzpAppModal(discord.ui.Modal, title='Заявка: VZP'):
     q1 = discord.ui.TextInput(label='Имя (IC)', placeholder='Иван Иванов', style=discord.TextStyle.short)
     q2 = discord.ui.TextInput(label='Возраст (OOC)', placeholder='Например: 20', style=discord.TextStyle.short)
     q3 = discord.ui.TextInput(label='Есть ли у вас опыт в VZP?', placeholder='Да/Нет', style=discord.TextStyle.short)
-    q4 = discord.ui.TextInput(label='Откат игры (DM 15x15) или (откат VZP)', placeholder='Ваш ответ...', style=discord.TextStyle.paragraph)
     q5 = discord.ui.TextInput(label='В каких семьях играли ранее?', placeholder='Ваш ответ...', style=discord.TextStyle.paragraph)
 
     async def on_submit(self, interaction: discord.Interaction):
@@ -792,55 +875,16 @@ class VzpAppModal(discord.ui.Modal, title='Заявка: VZP'):
             'name': self.q1.value,
             'age': self.q2.value,
             'vzp_experience': self.q3.value,
-            'rollback': self.q4.value,
             'previous_families': self.q5.value,
         }
 
-        admin_embed = discord.Embed(
-            title='📋 Новая заявка в семью CENT (VZP)',
-            color=0x3B82F6,
-            timestamp=discord.utils.utcnow(),
+        select_embed = discord.Embed(
+            title='Тип отката',
+            description='Выбери тип отката, после этого вставь ссылку на запись.',
+            color=0xE67E22,
         )
-        admin_embed.set_author(
-            name=f'{interaction.user.display_name} ({interaction.user.name})',
-            icon_url=interaction.user.display_avatar.url if interaction.user.display_avatar else None,
-        )
-        admin_embed.add_field(name='Участник', value=interaction.user.mention, inline=False)
-        admin_embed.add_field(name='Тип заявки', value='**VZP**', inline=False)
-        admin_embed.add_field(name='Имя (IC)', value=family_applications[interaction.user.id].get('name', '—'), inline=False)
-        admin_embed.add_field(name='Возраст (OOC)', value=family_applications[interaction.user.id].get('age', '—'), inline=False)
-        admin_embed.add_field(name='Опыт в VZP', value=family_applications[interaction.user.id].get('vzp_experience', '—'), inline=False)
-        admin_embed.add_field(name='Откат игры', value=family_applications[interaction.user.id].get('rollback', '—'), inline=False)
-        admin_embed.add_field(name='Семьи ранее', value=family_applications[interaction.user.id].get('previous_families', '—'), inline=False)
-        admin_embed.set_footer(text=f'ID: {interaction.user.id}')
-
-        target_channel_id = APP_LOG_CHANNEL_ID or RECRUIT_APP_LIST_CHANNEL_ID or LOG_CHANNEL_ID
-        if target_channel_id:
-            try:
-                log_chan = bot.get_channel(target_channel_id)
-                if log_chan is None:
-                    log_chan = await bot.fetch_channel(target_channel_id)
-                if isinstance(log_chan, discord.TextChannel):
-                    await log_chan.send(embed=admin_embed, view=FamilyAppDecisionView(interaction.user.id))
-            except Exception as exc:
-                print(f'[APP LOG ERROR] {exc}')
-
-        asyncio.create_task(send_log(
-            '📋 Заявка в семью подана',
-            fields=[
-                ('Участник', _log_user_field(interaction.user), True),
-                ('Тип заявки', 'VZP', True),
-            ],
-            color=0x22C55E, user=interaction.user,
-        ))
-
-        final_embed = discord.Embed(
-            title='✅ Заявка отправлена!',
-            description='Ваша заявка успешно заполнена и передана администрации семьи **CENT**.\nОжидайте ответа!',
-            color=0x22C55E,
-        )
-        final_embed.set_footer(text='Форма заявки')
-        await interaction.response.send_message(embed=final_embed, ephemeral=True)
+        select_embed.set_footer(text='Форма заявки')
+        await interaction.response.send_message(embed=select_embed, view=VzpRollbackTypeView(), ephemeral=True)
 
 
 class ApplicationCreateView(discord.ui.View):

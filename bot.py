@@ -18,13 +18,9 @@ from dotenv import load_dotenv
 
 try:
     from telethon import TelegramClient, events
-    from telethon.errors import SessionPasswordNeededError
-    from telethon.sessions import StringSession
 except Exception:
     TelegramClient = None
     events = None
-    SessionPasswordNeededError = None
-    StringSession = None
 
 load_dotenv()
 
@@ -3301,7 +3297,6 @@ async def vzp_attack_cmd(interaction: discord.Interaction, size: int) -> None:
 # --------------- Telegram: война за точки (нам забили) ---------------
 
 tg_client = None
-tg_login_state: dict = {}
 
 
 def tg_available() -> bool:
@@ -3383,73 +3378,6 @@ async def tg_war_monitor() -> None:
         await client.run_until_disconnected()
     except Exception as exc:
         print(f'[TG] Ошибка монитора: {exc}')
-
-
-@bot.tree.command(name='tg_phone', description='Начать вход в Telegram (номер телефона)')
-async def tg_phone_cmd(interaction: discord.Interaction, phone: str) -> None:
-    if not tg_available():
-        await interaction.response.send_message('Telethon недоступен.', ephemeral=True)
-        return
-    await interaction.response.defer(ephemeral=True)
-    try:
-        client = await tg_get_client()
-        await client.connect()
-        if await client.is_user_authorized():
-            await interaction.followup.send('Уже авторизован.', ephemeral=True)
-            return
-        result = await client.send_code_request(phone)
-        tg_login_state['phone'] = phone
-        tg_login_state['code_hash'] = result.phone_code_hash
-        tg_login_state['need_password'] = False
-        await interaction.followup.send('Код отправлен. Введи его через `/tg_code <код>`.', ephemeral=True)
-    except Exception as exc:
-        await interaction.followup.send(f'Ошибка: {exc}', ephemeral=True)
-
-
-@bot.tree.command(name='tg_code', description='Ввести код из Telegram')
-async def tg_code_cmd(interaction: discord.Interaction, code: str) -> None:
-    if not tg_available():
-        await interaction.response.send_message('Telethon недоступен.', ephemeral=True)
-        return
-    await interaction.response.defer(ephemeral=True)
-    try:
-        client = await tg_get_client()
-        phone = tg_login_state.get('phone')
-        code_hash = tg_login_state.get('code_hash')
-        if not phone or not code_hash:
-            await interaction.followup.send('Сначала вызови `/tg_phone <номер>`.', ephemeral=True)
-            return
-        try:
-            await client.sign_in(phone=phone, code=code.strip(), phone_code_hash=code_hash)
-        except SessionPasswordNeededError:
-            tg_login_state['need_password'] = True
-            await interaction.followup.send('Нужен пароль двухфакторки: `/tg_password <пароль>`.', ephemeral=True)
-            return
-        tg_login_state.pop('phone', None)
-        tg_login_state.pop('code_hash', None)
-        await interaction.followup.send('Вход выполнен. Перезапущу монитор...', ephemeral=True)
-        asyncio.create_task(tg_war_monitor())
-    except Exception as exc:
-        await interaction.followup.send(f'Ошибка: {exc}', ephemeral=True)
-
-
-@bot.tree.command(name='tg_password', description='Ввести пароль двухфакторки Telegram')
-async def tg_password_cmd(interaction: discord.Interaction, password: str) -> None:
-    if not tg_available():
-        await interaction.response.send_message('Telethon недоступен.', ephemeral=True)
-        return
-    await interaction.response.defer(ephemeral=True)
-    try:
-        client = await tg_get_client()
-        if not tg_login_state.get('need_password'):
-            await interaction.followup.send('Сначала вызови `/tg_phone` и `/tg_code`.', ephemeral=True)
-            return
-        await client.sign_in(password=password)
-        tg_login_state['need_password'] = False
-        await interaction.followup.send('Вход выполнен. Перезапущу монитор...', ephemeral=True)
-        asyncio.create_task(tg_war_monitor())
-    except Exception as exc:
-        await interaction.followup.send(f'Ошибка: {exc}', ephemeral=True)
 
 
 @bot.tree.command(name='tg_status', description='Статус Telegram-моста')

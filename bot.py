@@ -3483,10 +3483,11 @@ def build_war_stats_image(event: dict) -> Path:
     W = 1180
     TABLE_W = (W - MARGIN * 3) // 2
     ROW_H = 34
-    HEADER_H = 42
-    TEAM_H = 46
+    TOTAL_H = 34
+    COL_H = 26
+    TEAM_H = 34
     rows = max(len(our_players), len(enemy_players), 1)
-    H = 235 + TEAM_H + HEADER_H + rows * ROW_H + 40
+    H = 214 + TEAM_H + TOTAL_H + COL_H + rows * ROW_H + 40
 
     img = Image.new('RGB', (W, H), (13, 17, 23))
     draw = ImageDraw.Draw(img)
@@ -3506,27 +3507,44 @@ def build_war_stats_image(event: dict) -> Path:
     draw.text((MARGIN, 128), f'{our_name or WAR_ORG_NAME} — {result_text}', font=f_sub, fill=result_color)
     draw.rectangle([MARGIN, 178, W - MARGIN, 180], fill=(51, 65, 85))
 
+    W_KILLS, W_DMG, W_HS, W_HIT = 76, 96, 70, 88
+
+    def col_positions(x0: int):
+        right = x0 + TABLE_W
+        x_hit_right = right - 8
+        x_hs_right = x_hit_right - W_HIT
+        x_dmg_right = x_hs_right - W_HS
+        x_kills_right = x_dmg_right - W_DMG
+        return x_kills_right, x_dmg_right, x_hs_right, x_hit_right
+
+    def draw_right_aligned(x_right: int, text: str, y: int, font, fill) -> None:
+        width = draw.textlength(text, font=font)
+        draw.text((x_right - width, y), text, font=font, fill=fill)
+
     def draw_table(x0: int, team_name: str, players: list, team_color: tuple, total: dict) -> None:
         y = 210
         draw.text((x0, y), team_name or '?', font=f_team, fill=team_color)
         y += TEAM_H
+
         t_kills = (total or {}).get('kills') or 0
         t_damage = (total or {}).get('damage') or 0
         t_hs = (total or {}).get('headshots') or 0
-        draw.text((x0, y + 6), f'Kills: {t_kills}  •  Урон: {t_damage}  •  HS: {t_hs}', font=f_small, fill=(148, 163, 184))
-        y += HEADER_H
+        draw.text((x0, y + 7), f'Kills: {t_kills}   Урон: {t_damage}   HS: {t_hs}', font=f_small, fill=(148, 163, 184))
+        y += TOTAL_H
 
-        col_w = TABLE_W
-        draw.text((x0 + 6, y - 30), 'Ник', font=f_header, fill=(148, 163, 184))
-        draw.text((x0 + col_w - 212, y - 30), 'Kills', font=f_header, fill=(148, 163, 184))
-        draw.text((x0 + col_w - 150, y - 30), 'Урон', font=f_header, fill=(148, 163, 184))
-        draw.text((x0 + col_w - 92, y - 30), 'HS%', font=f_header, fill=(148, 163, 184))
-        draw.text((x0 + col_w - 34, y - 30), 'Точн%', font=f_header, fill=(148, 163, 184))
+        x_kills_right, x_dmg_right, x_hs_right, x_hit_right = col_positions(x0)
+        draw.text((x0, y + 2), 'Ник', font=f_header, fill=(148, 163, 184))
+        draw_right_aligned(x_kills_right, 'Kills', y + 2, f_header, (148, 163, 184))
+        draw_right_aligned(x_dmg_right, 'Урон', y + 2, f_header, (148, 163, 184))
+        draw_right_aligned(x_hs_right, 'HS%', y + 2, f_header, (148, 163, 184))
+        draw_right_aligned(x_hit_right, '%хитов', y + 2, f_header, (148, 163, 184))
+        draw.rectangle([x0, y + COL_H - 2, x0 + TABLE_W, y + COL_H], fill=(51, 65, 85))
+        y += COL_H
 
         best_kills = max((p.get('kills') or 0) for p in players) if players else 0
         for i in range(max(len(players), 1)):
             if i % 2 == 0:
-                draw.rectangle([x0, y, x0 + col_w, y + ROW_H - 2], fill=(20, 26, 35))
+                draw.rectangle([x0, y, x0 + TABLE_W, y + ROW_H - 2], fill=(20, 26, 35))
             if i < len(players):
                 p = players[i]
                 name = _war_stats_truncate(p.get('charName') or f'ID {i}', 22)
@@ -3536,10 +3554,10 @@ def build_war_stats_image(event: dict) -> Path:
                 hit = p.get('hitPercent') or 0
                 name_color = (148, 163, 184) if kills != best_kills or best_kills == 0 else (250, 204, 21)
                 draw.text((x0 + 6, y + 8), name, font=f_cell, fill=name_color)
-                draw.text((x0 + col_w - 212, y + 8), str(kills), font=f_cell, fill=(226, 232, 240))
-                draw.text((x0 + col_w - 150, y + 8), str(damage), font=f_cell, fill=(226, 232, 240))
-                draw.text((x0 + col_w - 92, y + 8), str(hs), font=f_cell, fill=(226, 232, 240))
-                draw.text((x0 + col_w - 34, y + 8), str(hit), font=f_cell, fill=(226, 232, 240))
+                draw_right_aligned(x_kills_right, str(kills), y + 8, f_cell, (226, 232, 240))
+                draw_right_aligned(x_dmg_right, str(damage), y + 8, f_cell, (226, 232, 240))
+                draw_right_aligned(x_hs_right, str(hs), y + 8, f_cell, (226, 232, 240))
+                draw_right_aligned(x_hit_right, str(hit), y + 8, f_cell, (226, 232, 240))
             y += ROW_H
 
     draw_table(MARGIN, our_name or WAR_ORG_NAME, our_players, (56, 189, 248) if is_def else (248, 113, 113), our_stats)

@@ -1204,6 +1204,33 @@ def read_vzp_state() -> dict:
 def write_vzp_state(data: dict) -> None:
     write_json(VZP_STATE_FILE, data)
 
+def vzp_entry_from_message(message: discord.Message) -> dict | None:
+    if not message.embeds:
+        return None
+    embed = message.embeds[0]
+    title = embed.title or ''
+    if 'Защита' in title:
+        vzp_type = 'def'
+    elif 'Атака' in title:
+        vzp_type = 'attack'
+    else:
+        return None
+    entry = {'type': vzp_type, 'size': 0, 'point': '', 'reacts': {}, 'channel_id': message.channel.id if message.channel else 0}
+    for field in embed.fields:
+        name = field.name or ''
+        value = field.value or ''
+        if name.startswith('Размер'):
+            m = re.match(r'(\d+)x(\d+)', value.strip())
+            if m:
+                entry['size'] = int(m.group(1))
+            elif value.strip() == 'Без лимита':
+                entry['size'] = 0
+        elif name == 'Точка':
+            entry['point'] = value.strip()
+        elif name == 'Кто нажал':
+            entry['reacts'] = {uid: 1 for uid in re.findall(r'<@(\d+)>', value)}
+    return entry
+
 def vzp_image_file(vzp_type: str) -> Path:
     return VZP_DEF_IMAGE_FILE if vzp_type == 'def' else VZP_ATTACK_IMAGE_FILE
 
@@ -1280,8 +1307,8 @@ class VzpRemoveView(discord.ui.View):
             state = read_vzp_state()
             entry = state.get(str(self.message_id))
             if entry is None:
-                await interaction.response.send_message('Банер не найден.', ephemeral=True)
-                return
+                entry = self.entry
+                state[str(self.message_id)] = entry
             removed = []
             for uid in values:
                 if uid in entry.get('reacts', {}):
@@ -1324,8 +1351,11 @@ class VzpBannerView(discord.ui.View):
             state = read_vzp_state()
             entry = state.get(str(message_id))
             if entry is None:
-                await interaction.response.send_message('Банер не найден.', ephemeral=True)
-                return
+                entry = vzp_entry_from_message(interaction.message)
+                if entry is None:
+                    await interaction.response.send_message('Банер не найден.', ephemeral=True)
+                    return
+                state[str(message_id)] = entry
             uid = str(interaction.user.id)
             if uid in entry.get('kicked', []):
                 await interaction.response.send_message('Ты был убран из списка и не можешь вернуться.', ephemeral=True)
@@ -1355,8 +1385,11 @@ class VzpBannerView(discord.ui.View):
             state = read_vzp_state()
             entry = state.get(str(message_id))
             if entry is None:
-                await interaction.response.send_message('Банер не найден.', ephemeral=True)
-                return
+                entry = vzp_entry_from_message(interaction.message)
+                if entry is None:
+                    await interaction.response.send_message('Банер не найден.', ephemeral=True)
+                    return
+                state[str(message_id)] = entry
             view = VzpRemoveView(message_id, entry, interaction.guild)
             await interaction.response.send_message(
                 'Выбери кого убрать из участников:',
@@ -1404,7 +1437,9 @@ def read_json(path: Path) -> dict:
         return {}
 
 def write_json(path: Path, data: dict) -> None:
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
+    tmp = path.with_name(path.name + '.tmp')
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
+    tmp.replace(path)
 
 def read_verification_state() -> dict:
     env_msg = os.getenv('VERIFICATION_MESSAGE_ID', '')

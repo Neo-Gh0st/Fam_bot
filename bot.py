@@ -3448,16 +3448,9 @@ def _war_stats_utc_to_msk(value: str) -> str:
 def _war_stats_next_text(value: str) -> str:
     try:
         dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
-        now = datetime.now(timezone.utc)
-        delta = dt - now
-        total = max(0, int(delta.total_seconds()))
-        h, m = divmod(total, 3600)
-        m = m // 60
-        if h <= 0:
-            return f'через {m} мин  •  {dt.strftime("%H:%M")}'
-        return f'через {h}ч {m:02d}м  •  {dt.strftime("%H:%M")}'
+        return f'через 2 часа  •  {dt.strftime("%H:%M")}'
     except Exception:
-        return '—'
+        return 'через 2 часа'
 
 
 def _war_stats_truncate(text: str, max_len: int) -> str:

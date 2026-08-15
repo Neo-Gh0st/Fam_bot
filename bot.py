@@ -1223,9 +1223,6 @@ def build_vzp_tier_tags(guild: discord.Guild | None) -> str:
 def build_vzp_embed(entry: dict, guild: discord.Guild | None) -> discord.Embed:
     is_def = entry.get('type') == 'def'
     title = '🛡 Защита VZP' if is_def else '⚔️ Атака VZP'
-    war_time = entry.get('time')
-    if war_time:
-        title = f'{title} — {war_time}'
     color = 0x38BDF8 if is_def else 0xF87171
     image_name = VZP_DEF_IMAGE_FILE.name if is_def else VZP_ATTACK_IMAGE_FILE.name
     embed = discord.Embed(title=title, color=color, timestamp=discord.utils.utcnow())
@@ -3345,16 +3342,7 @@ def write_war_state(data: dict) -> None:
     write_json(WAR_STATE_FILE, data)
 
 
-def parse_war_started_at(value: str) -> str:
-    try:
-        dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
-        local = dt + timedelta(hours=3)
-        return local.strftime('%H:%M')
-    except Exception:
-        return value or '—'
-
-
-async def publish_war_banner(channel_id: int, size: int, war_time: str, point_name: str = '') -> None:
+async def publish_war_banner(channel_id: int, size: int, point_name: str = '') -> None:
     channel = bot.get_channel(channel_id)
     if channel is None:
         try:
@@ -3368,7 +3356,7 @@ async def publish_war_banner(channel_id: int, size: int, war_time: str, point_na
     if not image_file.is_file():
         print('[WAR] Файл def.png не найден')
         return
-    entry = {'type': 'def', 'size': size, 'time': war_time, 'point': point_name, 'reacts': {}, 'channel_id': channel_id}
+    entry = {'type': 'def', 'size': size, 'point': point_name, 'reacts': {}, 'channel_id': channel_id}
     embed = build_vzp_embed(entry, channel.guild)
     message = await channel.send(
         embed=embed,
@@ -3379,7 +3367,7 @@ async def publish_war_banner(channel_id: int, size: int, war_time: str, point_na
     state = read_vzp_state()
     state[str(message.id)] = entry
     write_vzp_state(state)
-    print(f'[WAR] Банер "нам забили" отправлен: {size}x{size}, {war_time}, точка: {point_name}')
+    print(f'[WAR] Банер "нам забили" отправлен: {size}x{size}, точка: {point_name}')
 
 
 async def war_monitor() -> None:
@@ -3407,11 +3395,10 @@ async def war_monitor() -> None:
                 state['seen'][event_id] = ev.get('startedAt') or ''
                 changed = True
                 size = int(ev.get('maxPlayers') or 0)
-                war_time = parse_war_started_at(ev.get('startedAt') or '')
                 point_name = ev.get('pointName') or ''
-                print(f'[WAR] Новое событие: {event_id} {size}x{size} {war_time} {point_name}')
+                print(f'[WAR] Новое событие: {event_id} {size}x{size} {point_name}')
                 try:
-                    await publish_war_banner(WAR_CHANNEL_ID, size, war_time, point_name)
+                    await publish_war_banner(WAR_CHANNEL_ID, size, point_name)
                 except Exception as exc:
                     print(f'[WAR] Ошибка отправки банера: {exc}')
             if changed:
@@ -3422,7 +3409,7 @@ async def war_monitor() -> None:
 
 
 @bot.tree.command(name='war_test', description='Тест: отправить банер "нам забили" в канал войн')
-async def war_test_cmd(interaction: discord.Interaction, size: int = 9, time: str = '23:15') -> None:
+async def war_test_cmd(interaction: discord.Interaction, size: int = 9) -> None:
     if not isinstance(interaction.user, discord.Member) or not any(role.id == VZP_CREATOR_ROLE_ID for role in interaction.user.roles):
         await interaction.response.send_message('Нужна роль для теста.', ephemeral=True)
         return
@@ -3431,7 +3418,7 @@ async def war_test_cmd(interaction: discord.Interaction, size: int = 9, time: st
         return
     await interaction.response.defer(ephemeral=True)
     try:
-        await publish_war_banner(WAR_CHANNEL_ID, size, time, 'Тестовая точка')
+        await publish_war_banner(WAR_CHANNEL_ID, size, 'Тестовая точка')
         await interaction.followup.send('✅ Тестовый банер отправлен.', ephemeral=True)
     except Exception as exc:
         await interaction.followup.send(f'Ошибка: {exc}', ephemeral=True)

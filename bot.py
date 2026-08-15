@@ -117,6 +117,7 @@ WAR_SERVER_ID = int(os.getenv('WAR_SERVER_ID', '1'))
 WAR_CHANNEL_ID = int(os.getenv('WAR_CHANNEL_ID', '1531246363009089638'))
 WAR_STATS_CHANNEL_ID = int(os.getenv('WAR_STATS_CHANNEL_ID', '1531246363009089639'))
 WAR_POLL_SECONDS = int(os.getenv('WAR_POLL_SECONDS', '30'))
+WAR_ATTACK_CD_HOURS = int(os.getenv('WAR_ATTACK_CD_HOURS', '3'))
 WAR_STATE_FILE = Path(__file__).with_name('war-state.json')
 WAR_STATS_SENT_FILE = Path(__file__).with_name('war-stats-sent.json')
 WAR_STATS_FONT_FILE = Path(__file__).parent / 'assets' / 'DejaVuSans.ttf'
@@ -3417,13 +3418,27 @@ async def war_monitor() -> None:
 def read_war_stats_sent() -> dict:
     data = read_json(WAR_STATS_SENT_FILE)
     if not isinstance(data, dict):
-        return {'sent': []}
+        return {'sent': [], 'cd_sent': []}
     data.setdefault('sent', [])
+    data.setdefault('cd_sent', [])
     return data
 
 
 def write_war_stats_sent(data: dict) -> None:
     write_json(WAR_STATS_SENT_FILE, data)
+
+
+def _war_attack_cd_passed(entry: dict) -> bool:
+    if entry.get('role') != 'ATK':
+        return False
+    date_raw = entry.get('date') or ''
+    if not date_raw:
+        return False
+    try:
+        dt = datetime.fromisoformat(date_raw.replace('Z', '+00:00'))
+    except Exception:
+        return False
+    return dt + timedelta(hours=WAR_ATTACK_CD_HOURS) <= datetime.now(timezone.utc)
 
 
 def _war_stats_font(size: int):
@@ -3624,6 +3639,7 @@ async def war_stats_monitor() -> None:
             sent_ids = set(state['sent'])
             if not sent_ids:
                 state['sent'] = [h.get('eventId') for h in history or [] if h.get('eventId')]
+                state['cd_sent'] = [h.get('eventId') for h in history or [] if h.get('eventId') and h.get('role') == 'ATK' and _war_attack_cd_passed(h)]
                 write_war_stats_sent(state)
                 print(f'[WARSTATS] Инициализация: сохранены {len(state["sent"])} старых боёв (публиковать не будем)')
                 await asyncio.sleep(WAR_POLL_SECONDS)
@@ -3660,6 +3676,33 @@ async def war_stats_monitor() -> None:
                     changed = True
                 except Exception as exc:
                     print(f'[WARSTATS] Ошибка обработки боя {event_id}: {exc}')
+
+            cd_sent_ids = set(state['cd_sent'])
+            war_channel = bot.get_channel(WAR_CHANNEL_ID)
+            if not isinstance(war_channel, discord.TextChannel):
+                try:
+                    war_channel = await bot.fetch_channel(WAR_CHANNEL_ID)
+                except Exception:
+                    war_channel = None
+            if isinstance(war_channel, discord.TextChannel):
+                for h in history or []:
+                    event_id = h.get('eventId')
+                    if not event_id or event_id in cd_sent_ids:
+                        continue
+                    if h.get('role') != 'ATK':
+                        continue
+                    if not _war_attack_cd_passed(h):
+                        continue
+                    opponent = (h.get('opponentName') or '?').strip()
+                    point = (h.get('map') or '').split(' — ')[0]
+                    try:
+                        await war_channel.send(f'⏰ Кд на атаку прошло!\nПротив: {opponent} · {point}')
+                        print(f'[WARSTATS] Кд на атаку прошло: {event_id} ({opponent})')
+                    except Exception as exc:
+                        print(f'[WARSTATS] Ошибка отправки кд {event_id}: {exc}')
+                    state['cd_sent'].append(event_id)
+                    cd_sent_ids.add(event_id)
+                    changed = True
             if changed:
                 write_war_stats_sent(state)
         except Exception as exc:

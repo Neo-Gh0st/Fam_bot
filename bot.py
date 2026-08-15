@@ -3537,7 +3537,7 @@ def build_war_stats_image(event: dict) -> Path:
         draw_right_aligned(x_kills_right, 'Kills', y + 2, f_header, (148, 163, 184))
         draw_right_aligned(x_dmg_right, 'Урон', y + 2, f_header, (148, 163, 184))
         draw_right_aligned(x_hs_right, 'HS%', y + 2, f_header, (148, 163, 184))
-        draw_right_aligned(x_hit_right, '%хитов', y + 2, f_header, (148, 163, 184))
+        draw_right_aligned(x_hit_right, 'HIT%', y + 2, f_header, (148, 163, 184))
         draw.rectangle([x0, y + COL_H - 2, x0 + TABLE_W, y + COL_H], fill=(51, 65, 85))
         y += COL_H
 

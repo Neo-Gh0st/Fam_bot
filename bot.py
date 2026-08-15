@@ -3489,11 +3489,11 @@ def build_war_stats_image(event: dict) -> Path:
 
     next_hours = 1.5 if is_def else 3
     next_war = ''
-    ended_raw = event.get('endedAt') or ''
-    if ended_raw:
+    started_raw = event.get('startedAt') or ''
+    if started_raw:
         try:
-            dt_end = datetime.fromisoformat(ended_raw.replace('Z', '+00:00'))
-            next_war = (dt_end + timedelta(hours=next_hours)).strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
+            dt_start = datetime.fromisoformat(started_raw.replace('Z', '+00:00'))
+            next_war = (dt_start + timedelta(hours=next_hours)).strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
         except Exception:
             next_war = ''
 

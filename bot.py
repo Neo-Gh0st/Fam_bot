@@ -3460,37 +3460,6 @@ def _war_stats_next_text(value: str) -> str:
         return '—'
 
 
-async def _war_stats_next_war() -> str:
-    try:
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Accept': 'application/json'}
-        async with aiohttp.ClientSession(headers=headers) as session:
-            async with session.get(WAR_API_URL, timeout=aiohttp.ClientTimeout(total=15)) as resp:
-                if resp.status != 200:
-                    return ''
-                events = await resp.json()
-        for ev in events or []:
-            if not isinstance(ev, dict):
-                continue
-            if ev.get('serverId') != WAR_SERVER_ID:
-                continue
-            defender = (ev.get('defenderName') or '').strip()
-            if defender != WAR_ORG_NAME:
-                continue
-            if ev.get('isAttackerWin') is not None:
-                continue
-            started = ev.get('startedAt') or ''
-            try:
-                dt = datetime.fromisoformat(started.replace('Z', '+00:00'))
-                if dt < datetime.now(timezone.utc) - timedelta(minutes=5):
-                    continue
-            except Exception:
-                pass
-            return started
-        return ''
-    except Exception:
-        return ''
-
-
 def _war_stats_truncate(text: str, max_len: int) -> str:
     text = str(text)
     if len(text) <= max_len:
@@ -3498,7 +3467,7 @@ def _war_stats_truncate(text: str, max_len: int) -> str:
     return text[: max_len - 1] + '…'
 
 
-def build_war_stats_image(event: dict, next_war: str = '') -> Path:
+def build_war_stats_image(event: dict) -> Path:
     from PIL import Image, ImageDraw
 
     is_def = (event.get('defenderName') or '').strip() == WAR_ORG_NAME
@@ -3519,8 +3488,18 @@ def build_war_stats_image(event: dict, next_war: str = '') -> Path:
     result_color = (16, 185, 129) if our_win else (239, 68, 68)
 
     msk_start = _war_stats_utc_to_msk(event.get('startedAt') or '')
+    msk_end = _war_stats_utc_to_msk(event.get('endedAt') or '')
     point = event.get('pointName') or '—'
     max_players = event.get('maxPlayers') or 0
+
+    next_war = ''
+    ended_raw = event.get('endedAt') or ''
+    if ended_raw:
+        try:
+            dt_end = datetime.fromisoformat(ended_raw.replace('Z', '+00:00'))
+            next_war = (dt_end + timedelta(hours=2)).strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
+        except Exception:
+            next_war = ''
 
     MARGIN = 40
     W = 1180
@@ -3545,7 +3524,10 @@ def build_war_stats_image(event: dict, next_war: str = '') -> Path:
     title = 'ЗАЩИТА VZP' if is_def else 'АТАКА VZP'
     title_color = (56, 189, 248) if is_def else (248, 113, 113)
     draw.text((MARGIN, 32), title, font=f_title, fill=title_color)
-    sub = f'{enemy_name or "?"}   •   {point}   •   {max_players}x{max_players}   •   {msk_start}'
+    if msk_end and msk_end != '—':
+        sub = f'{enemy_name or "?"}   •   {point}   •   {max_players}x{max_players}   •   {msk_start} — {msk_end}'
+    else:
+        sub = f'{enemy_name or "?"}   •   {point}   •   {max_players}x{max_players}   •   {msk_start}'
     draw.text((MARGIN, 92), sub, font=f_sub, fill=(203, 213, 225))
     draw.text((MARGIN, 128), f'{our_name or WAR_ORG_NAME} — {result_text}', font=f_sub, fill=result_color)
 
@@ -3667,8 +3649,7 @@ async def war_stats_monitor() -> None:
                     continue
                 try:
                     details = await _war_stats_fetch_event(session, event_id)
-                    next_war = await _war_stats_next_war()
-                    image_path = build_war_stats_image(details, next_war)
+                    image_path = build_war_stats_image(details)
                     if isinstance(channel, discord.TextChannel):
                         await channel.send(file=discord.File(image_path, filename=image_path.name))
                         print(f'[WARSTATS] Бой отправлен: {event_id} ({details.get("pointName") or "?"} vs {details.get("attackerName") or "?"})')
@@ -3726,8 +3707,7 @@ async def war_test_stats_cmd(interaction: discord.Interaction) -> None:
             return
         async with aiohttp.ClientSession(headers=headers) as session:
             details = await _war_stats_fetch_event(session, event_id)
-        next_war = await _war_stats_next_war()
-        image_path = build_war_stats_image(details, next_war)
+        image_path = build_war_stats_image(details)
         channel = bot.get_channel(WAR_STATS_CHANNEL_ID)
         if channel is None:
             channel = await bot.fetch_channel(WAR_STATS_CHANNEL_ID)

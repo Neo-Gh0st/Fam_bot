@@ -112,10 +112,14 @@ VZP_ADMIN_ROLE_IDS = [int(x) for x in os.getenv('VZP_ADMIN_ROLE_IDS', '153124635
 
 WAR_API_URL = os.getenv('WAR_API_URL', 'https://vzp-gta5rp.com/api/events')
 WAR_ORG_NAME = os.getenv('WAR_ORG_NAME', 'C E N T')
+WAR_ORG_ID = int(os.getenv('WAR_ORG_ID', '149377'))
 WAR_SERVER_ID = int(os.getenv('WAR_SERVER_ID', '1'))
 WAR_CHANNEL_ID = int(os.getenv('WAR_CHANNEL_ID', '1531246363009089638'))
+WAR_STATS_CHANNEL_ID = int(os.getenv('WAR_STATS_CHANNEL_ID', '1531246363009089639'))
 WAR_POLL_SECONDS = int(os.getenv('WAR_POLL_SECONDS', '30'))
 WAR_STATE_FILE = Path(__file__).with_name('war-state.json')
+WAR_STATS_SENT_FILE = Path(__file__).with_name('war-stats-sent.json')
+WAR_STATS_FONT_FILE = Path(__file__).parent / 'assets' / 'DejaVuSans.ttf'
 
 NVIDIA_API_KEY = os.getenv('NVIDIA_API_KEY')
 NVIDIA_API_URL = 'https://integrate.api.nvidia.com/v1/chat/completions'
@@ -2311,6 +2315,7 @@ async def on_ready() -> None:
     asyncio.create_task(refresh_admin_panel_safely())
     asyncio.create_task(refresh_blacklist_safely())
     asyncio.create_task(war_monitor())
+    asyncio.create_task(war_stats_monitor())
     await asyncio.sleep(2)
     print('All on_ready tasks launched')
     try:
@@ -3410,6 +3415,207 @@ async def war_monitor() -> None:
         await asyncio.sleep(WAR_POLL_SECONDS)
 
 
+# --------------- Война за точки: статистика боя картинкой ---------------
+
+def read_war_stats_sent() -> dict:
+    data = read_json(WAR_STATS_SENT_FILE)
+    if not isinstance(data, dict):
+        return {'sent': []}
+    data.setdefault('sent', [])
+    return data
+
+
+def write_war_stats_sent(data: dict) -> None:
+    write_json(WAR_STATS_SENT_FILE, data)
+
+
+def _war_stats_font(size: int):
+    from PIL import ImageFont
+    for path in (WAR_STATS_FONT_FILE, Path('C:/Windows/Fonts/arial.ttf')):
+        try:
+            if path.is_file():
+                return ImageFont.truetype(str(path), size)
+        except Exception:
+            pass
+    return ImageFont.load_default()
+
+
+def _war_stats_utc_to_msk(value: str) -> str:
+    try:
+        dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+        return (dt + timedelta(hours=3)).strftime('%d.%m.%Y %H:%M')
+    except Exception:
+        return value or '—'
+
+
+def _war_stats_truncate(text: str, max_len: int) -> str:
+    text = str(text)
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 1] + '…'
+
+
+def build_war_stats_image(event: dict) -> Path:
+    from PIL import Image, ImageDraw
+
+    is_def = (event.get('defenderName') or '').strip() == WAR_ORG_NAME
+    our_name = event.get('defenderName') if is_def else event.get('attackerName')
+    enemy_name = event.get('attackerName') if is_def else event.get('defenderName')
+    our_players = event.get('defenders') if is_def else event.get('attackers')
+    enemy_players = event.get('attackers') if is_def else event.get('defenders')
+    our_stats = event.get('defenderStats') if is_def else event.get('attackerStats')
+    enemy_stats = event.get('attackerStats') if is_def else event.get('defenderStats')
+    if not isinstance(our_players, list):
+        our_players = []
+    if not isinstance(enemy_players, list):
+        enemy_players = []
+
+    is_attacker_win = event.get('isAttackerWin')
+    our_win = bool(is_attacker_win) != is_def
+    result_text = 'ПОБЕДА' if our_win else 'ПОРАЖЕНИЕ'
+    result_color = (16, 185, 129) if our_win else (239, 68, 68)
+
+    msk_start = _war_stats_utc_to_msk(event.get('startedAt') or '')
+    point = event.get('pointName') or '—'
+    max_players = event.get('maxPlayers') or 0
+
+    MARGIN = 40
+    W = 1180
+    TABLE_W = (W - MARGIN * 3) // 2
+    ROW_H = 34
+    HEADER_H = 42
+    TEAM_H = 46
+    rows = max(len(our_players), len(enemy_players), 1)
+    H = 235 + TEAM_H + HEADER_H + rows * ROW_H + 40
+
+    img = Image.new('RGB', (W, H), (13, 17, 23))
+    draw = ImageDraw.Draw(img)
+
+    f_title = _war_stats_font(36)
+    f_sub = _war_stats_font(22)
+    f_team = _war_stats_font(24)
+    f_header = _war_stats_font(18)
+    f_cell = _war_stats_font(18)
+    f_small = _war_stats_font(16)
+
+    title = 'ЗАЩИТА VZP' if is_def else 'АТАКА VZP'
+    title_color = (56, 189, 248) if is_def else (248, 113, 113)
+    draw.text((MARGIN, 32), title, font=f_title, fill=title_color)
+    sub = f'{enemy_name or "?"}   •   {point}   •   {max_players}x{max_players}   •   {msk_start}'
+    draw.text((MARGIN, 92), sub, font=f_sub, fill=(203, 213, 225))
+    draw.text((MARGIN, 128), f'{our_name or WAR_ORG_NAME} — {result_text}', font=f_sub, fill=result_color)
+    draw.rectangle([MARGIN, 178, W - MARGIN, 180], fill=(51, 65, 85))
+
+    def draw_table(x0: int, team_name: str, players: list, team_color: tuple, total: dict) -> None:
+        y = 210
+        draw.text((x0, y), team_name or '?', font=f_team, fill=team_color)
+        y += TEAM_H
+        t_kills = (total or {}).get('kills') or 0
+        t_damage = (total or {}).get('damage') or 0
+        t_hs = (total or {}).get('headshots') or 0
+        draw.text((x0, y + 6), f'Kills: {t_kills}  •  Урон: {t_damage}  •  HS: {t_hs}', font=f_small, fill=(148, 163, 184))
+        y += HEADER_H
+
+        col_w = TABLE_W
+        draw.text((x0 + 6, y - 30), 'Ник', font=f_header, fill=(148, 163, 184))
+        draw.text((x0 + col_w - 212, y - 30), 'Kills', font=f_header, fill=(148, 163, 184))
+        draw.text((x0 + col_w - 150, y - 30), 'Урон', font=f_header, fill=(148, 163, 184))
+        draw.text((x0 + col_w - 92, y - 30), 'HS%', font=f_header, fill=(148, 163, 184))
+        draw.text((x0 + col_w - 34, y - 30), 'Точн%', font=f_header, fill=(148, 163, 184))
+
+        best_kills = max((p.get('kills') or 0) for p in players) if players else 0
+        for i in range(max(len(players), 1)):
+            if i % 2 == 0:
+                draw.rectangle([x0, y, x0 + col_w, y + ROW_H - 2], fill=(20, 26, 35))
+            if i < len(players):
+                p = players[i]
+                name = _war_stats_truncate(p.get('charName') or f'ID {i}', 22)
+                kills = p.get('kills') or 0
+                damage = p.get('damage') or 0
+                hs = p.get('hsPercent') or 0
+                hit = p.get('hitPercent') or 0
+                name_color = (148, 163, 184) if kills != best_kills or best_kills == 0 else (250, 204, 21)
+                draw.text((x0 + 6, y + 8), name, font=f_cell, fill=name_color)
+                draw.text((x0 + col_w - 212, y + 8), str(kills), font=f_cell, fill=(226, 232, 240))
+                draw.text((x0 + col_w - 150, y + 8), str(damage), font=f_cell, fill=(226, 232, 240))
+                draw.text((x0 + col_w - 92, y + 8), str(hs), font=f_cell, fill=(226, 232, 240))
+                draw.text((x0 + col_w - 34, y + 8), str(hit), font=f_cell, fill=(226, 232, 240))
+            y += ROW_H
+
+    draw_table(MARGIN, our_name or WAR_ORG_NAME, our_players, (56, 189, 248) if is_def else (248, 113, 113), our_stats)
+    draw_table(MARGIN * 2 + TABLE_W, enemy_name or 'Противник', enemy_players, (248, 113, 113), enemy_stats)
+
+    path = Path(__file__).with_name(f'war-stats-{str(event.get("eventId") or "unknown")[:8]}.png')
+    img.save(path)
+    return path
+
+
+async def _war_stats_fetch_event(session: aiohttp.ClientSession, event_id: str) -> dict:
+    async with session.get(f'{WAR_API_URL.rsplit("/", 1)[0]}/events/{event_id}', timeout=aiohttp.ClientTimeout(total=15)) as resp:
+        if resp.status != 200:
+            raise RuntimeError(f'HTTP {resp.status}')
+        return await resp.json()
+
+
+async def war_stats_monitor() -> None:
+    print(f'[WARSTATS] Монитор статистики запущен: организация {WAR_ORG_ID} ({WAR_ORG_NAME})')
+    base = WAR_API_URL.rsplit('/', 1)[0]
+    history_url = f'{base}/stats/organizations/{WAR_ORG_ID}/history'
+    while True:
+        try:
+            async with aiohttp.ClientSession(headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Accept': 'application/json'}) as session:
+                async with session.get(history_url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                    if resp.status != 200:
+                        raise RuntimeError(f'HTTP {resp.status}')
+                    history = await resp.json()
+
+            state = read_war_stats_sent()
+            sent_ids = set(state['sent'])
+            if not sent_ids:
+                state['sent'] = [h.get('eventId') for h in history or [] if h.get('eventId')]
+                write_war_stats_sent(state)
+                print(f'[WARSTATS] Инициализация: сохранены {len(state["sent"])} старых боёв (публиковать не будем)')
+                await asyncio.sleep(WAR_POLL_SECONDS)
+                continue
+
+            channel = bot.get_channel(WAR_STATS_CHANNEL_ID)
+            if channel is None:
+                try:
+                    channel = await bot.fetch_channel(WAR_STATS_CHANNEL_ID)
+                except Exception:
+                    channel = None
+            if not isinstance(channel, discord.TextChannel):
+                print(f'[WARSTATS] Канал {WAR_STATS_CHANNEL_ID} не найден')
+
+            changed = False
+            for h in history or []:
+                event_id = h.get('eventId')
+                if not event_id or event_id in sent_ids:
+                    continue
+                try:
+                    details = await _war_stats_fetch_event(session, event_id)
+                    image_path = build_war_stats_image(details)
+                    if isinstance(channel, discord.TextChannel):
+                        await channel.send(file=discord.File(image_path, filename=image_path.name))
+                        print(f'[WARSTATS] Бой отправлен: {event_id} ({details.get("pointName") or "?"} vs {details.get("attackerName") or "?"})')
+                    else:
+                        print(f'[WARSTATS] Бой пропущен (нет канала): {event_id}')
+                    try:
+                        image_path.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                    state['sent'].append(event_id)
+                    sent_ids.add(event_id)
+                    changed = True
+                except Exception as exc:
+                    print(f'[WARSTATS] Ошибка обработки боя {event_id}: {exc}')
+            if changed:
+                write_war_stats_sent(state)
+        except Exception as exc:
+            print(f'[WARSTATS] Ошибка опроса: {exc}')
+        await asyncio.sleep(WAR_POLL_SECONDS)
+
+
 @bot.tree.command(name='war_test', description='Тест: отправить банер "нам забили" в канал войн')
 async def war_test_cmd(interaction: discord.Interaction, size: int = 9) -> None:
     if not isinstance(interaction.user, discord.Member) or not any(role.id == VZP_CREATOR_ROLE_ID for role in interaction.user.roles):
@@ -3422,6 +3628,40 @@ async def war_test_cmd(interaction: discord.Interaction, size: int = 9) -> None:
     try:
         await publish_war_banner(WAR_CHANNEL_ID, size, 'Тестовая точка')
         await interaction.followup.send('✅ Тестовый банер отправлен.', ephemeral=True)
+    except Exception as exc:
+        await interaction.followup.send(f'Ошибка: {exc}', ephemeral=True)
+
+
+@bot.tree.command(name='war_test_stats', description='Тест: отправить статистику последнего боя CENT в канал статистики')
+async def war_test_stats_cmd(interaction: discord.Interaction) -> None:
+    if not isinstance(interaction.user, discord.Member) or not any(role.id == VZP_CREATOR_ROLE_ID for role in interaction.user.roles):
+        await interaction.response.send_message('Нужна роль для теста.', ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+    try:
+        base = WAR_API_URL.rsplit('/', 1)[0]
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Accept': 'application/json'}
+        async with aiohttp.ClientSession(headers=headers) as session:
+            async with session.get(f'{base}/stats/organizations/{WAR_ORG_ID}/history', timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                if resp.status != 200:
+                    raise RuntimeError(f'HTTP {resp.status}')
+                history = await resp.json()
+        event_id = (history or [{}])[0].get('eventId')
+        if not event_id:
+            await interaction.followup.send('Боёв ещё нет.', ephemeral=True)
+            return
+        async with aiohttp.ClientSession(headers=headers) as session:
+            details = await _war_stats_fetch_event(session, event_id)
+        image_path = build_war_stats_image(details)
+        channel = bot.get_channel(WAR_STATS_CHANNEL_ID)
+        if channel is None:
+            channel = await bot.fetch_channel(WAR_STATS_CHANNEL_ID)
+        await channel.send(file=discord.File(image_path, filename=image_path.name))
+        try:
+            image_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+        await interaction.followup.send('✅ Тестовая статистика отправлена.', ephemeral=True)
     except Exception as exc:
         await interaction.followup.send(f'Ошибка: {exc}', ephemeral=True)
 

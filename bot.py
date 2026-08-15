@@ -3466,6 +3466,8 @@ def write_war_stats_sent(data: dict) -> None:
 def _war_attack_cd_passed(entry: dict) -> bool:
     if entry.get('role') != 'ATK':
         return False
+    if entry.get('isWin') is None:
+        return False
     date_raw = entry.get('date') or ''
     if not date_raw:
         return False
@@ -3673,12 +3675,21 @@ async def war_stats_monitor() -> None:
             state = read_war_stats_sent()
             sent_ids = set(state['sent'])
             if not sent_ids:
-                state['sent'] = [h.get('eventId') for h in history or [] if h.get('eventId')]
+                state['sent'] = [h.get('eventId') for h in history or [] if h.get('eventId') and h.get('isWin') is not None]
                 state['cd_sent'] = [h.get('eventId') for h in history or [] if h.get('eventId') and h.get('role') == 'ATK' and _war_attack_cd_passed(h)]
                 write_war_stats_sent(state)
                 print(f'[WARSTATS] Инициализация: сохранены {len(state["sent"])} старых боёв (публиковать не будем)')
                 await asyncio.sleep(WAR_POLL_SECONDS)
                 continue
+
+            in_progress = {h.get('eventId') for h in history or [] if h.get('eventId') and h.get('isWin') is None}
+            if in_progress:
+                old_len = len(state['sent'])
+                state['sent'] = [eid for eid in state['sent'] if eid not in in_progress]
+                if len(state['sent']) != old_len:
+                    write_war_stats_sent(state)
+                    print(f'[WARSTATS] Убраны из sent незавершённые бои: {sorted(in_progress)}')
+                sent_ids = set(state['sent'])
 
             channel = bot.get_channel(WAR_STATS_CHANNEL_ID)
             if channel is None:
@@ -3696,6 +3707,9 @@ async def war_stats_monitor() -> None:
                     continue
                 try:
                     details = await _war_stats_fetch_event(session, event_id)
+                    if details.get('isAttackerWin') is None:
+                        print(f'[WARSTATS] Бой ещё идёт, пропускаю: {event_id}')
+                        continue
                     image_path = build_war_stats_image(details)
                     if isinstance(channel, discord.TextChannel):
                         await channel.send(file=discord.File(image_path, filename=image_path.name))

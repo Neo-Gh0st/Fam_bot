@@ -3374,7 +3374,7 @@ async def war_monitor() -> None:
     print(f'[WAR] Монитор запущен: {WAR_API_URL}, семья "{WAR_ORG_NAME}", сервер {WAR_SERVER_ID}')
     while True:
         try:
-            async with aiohttp.ClientSession() as session:
+            async with aiohttp.ClientSession(headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Accept': 'application/json'}) as session:
                 async with session.get(WAR_API_URL, timeout=aiohttp.ClientTimeout(total=15)) as resp:
                     if resp.status != 200:
                         raise RuntimeError(f'HTTP {resp.status}')

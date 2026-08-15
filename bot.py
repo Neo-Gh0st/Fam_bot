@@ -3566,10 +3566,12 @@ def build_war_stats_image(event: dict) -> Path:
 
 
 async def _war_stats_fetch_event(session: aiohttp.ClientSession, event_id: str) -> dict:
-    async with session.get(f'{WAR_API_URL.rsplit("/", 1)[0]}/events/{event_id}', timeout=aiohttp.ClientTimeout(total=15)) as resp:
-        if resp.status != 200:
-            raise RuntimeError(f'HTTP {resp.status}')
-        return await resp.json()
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Accept': 'application/json'}
+    async with aiohttp.ClientSession(headers=headers) as s:
+        async with s.get(f'{WAR_API_URL.rsplit("/", 1)[0]}/events/{event_id}', timeout=aiohttp.ClientTimeout(total=15)) as resp:
+            if resp.status != 200:
+                raise RuntimeError(f'HTTP {resp.status}')
+            return await resp.json()
 
 
 async def war_stats_monitor() -> None:

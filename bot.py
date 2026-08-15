@@ -5,7 +5,7 @@ import re
 import time
 import uuid
 import traceback
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -3445,6 +3445,52 @@ def _war_stats_utc_to_msk(value: str) -> str:
         return value or '—'
 
 
+def _war_stats_next_text(value: str) -> str:
+    try:
+        dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+        now = datetime.now(timezone.utc)
+        delta = dt - now
+        total = max(0, int(delta.total_seconds()))
+        h, m = divmod(total, 3600)
+        m = m // 60
+        if h <= 0:
+            return f'через {m} мин  •  {dt.strftime("%H:%M")}'
+        return f'через {h}ч {m:02d}м  •  {dt.strftime("%H:%M")}'
+    except Exception:
+        return '—'
+
+
+async def _war_stats_next_war() -> str:
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Accept': 'application/json'}
+        async with aiohttp.ClientSession(headers=headers) as session:
+            async with session.get(WAR_API_URL, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                if resp.status != 200:
+                    return ''
+                events = await resp.json()
+        for ev in events or []:
+            if not isinstance(ev, dict):
+                continue
+            if ev.get('serverId') != WAR_SERVER_ID:
+                continue
+            defender = (ev.get('defenderName') or '').strip()
+            if defender != WAR_ORG_NAME:
+                continue
+            if ev.get('isAttackerWin') is not None:
+                continue
+            started = ev.get('startedAt') or ''
+            try:
+                dt = datetime.fromisoformat(started.replace('Z', '+00:00'))
+                if dt < datetime.now(timezone.utc) - timedelta(minutes=5):
+                    continue
+            except Exception:
+                pass
+            return started
+        return ''
+    except Exception:
+        return ''
+
+
 def _war_stats_truncate(text: str, max_len: int) -> str:
     text = str(text)
     if len(text) <= max_len:
@@ -3452,7 +3498,7 @@ def _war_stats_truncate(text: str, max_len: int) -> str:
     return text[: max_len - 1] + '…'
 
 
-def build_war_stats_image(event: dict) -> Path:
+def build_war_stats_image(event: dict, next_war: str = '') -> Path:
     from PIL import Image, ImageDraw
 
     is_def = (event.get('defenderName') or '').strip() == WAR_ORG_NAME
@@ -3502,6 +3548,16 @@ def build_war_stats_image(event: dict) -> Path:
     sub = f'{enemy_name or "?"}   •   {point}   •   {max_players}x{max_players}   •   {msk_start}'
     draw.text((MARGIN, 92), sub, font=f_sub, fill=(203, 213, 225))
     draw.text((MARGIN, 128), f'{our_name or WAR_ORG_NAME} — {result_text}', font=f_sub, fill=result_color)
+
+    if next_war:
+        right_x = W - MARGIN
+        next_label = 'СЛЕДУЮЩИЙ БОЙ'
+        next_info = _war_stats_next_text(next_war)
+        label_w = draw.textlength(next_label, font=f_sub)
+        info_w = draw.textlength(next_info, font=f_sub)
+        draw.text((right_x - label_w, 92), next_label, font=f_sub, fill=(250, 204, 21))
+        draw.text((right_x - info_w, 128), next_info, font=f_sub, fill=(203, 213, 225))
+
     draw.rectangle([MARGIN, 178, W - MARGIN, 180], fill=(51, 65, 85))
 
     W_KILLS, W_DMG, W_HS, W_HIT = 76, 96, 70, 88
@@ -3611,7 +3667,8 @@ async def war_stats_monitor() -> None:
                     continue
                 try:
                     details = await _war_stats_fetch_event(session, event_id)
-                    image_path = build_war_stats_image(details)
+                    next_war = await _war_stats_next_war()
+                    image_path = build_war_stats_image(details, next_war)
                     if isinstance(channel, discord.TextChannel):
                         await channel.send(file=discord.File(image_path, filename=image_path.name))
                         print(f'[WARSTATS] Бой отправлен: {event_id} ({details.get("pointName") or "?"} vs {details.get("attackerName") or "?"})')
@@ -3669,7 +3726,8 @@ async def war_test_stats_cmd(interaction: discord.Interaction) -> None:
             return
         async with aiohttp.ClientSession(headers=headers) as session:
             details = await _war_stats_fetch_event(session, event_id)
-        image_path = build_war_stats_image(details)
+        next_war = await _war_stats_next_war()
+        image_path = build_war_stats_image(details, next_war)
         channel = bot.get_channel(WAR_STATS_CHANNEL_ID)
         if channel is None:
             channel = await bot.fetch_channel(WAR_STATS_CHANNEL_ID)

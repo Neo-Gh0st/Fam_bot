@@ -3,5 +3,3 @@ __pycache__/
 .env
 *-state.json
 railway.txt
-*.session
-telegram-session.session

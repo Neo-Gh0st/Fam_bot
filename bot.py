@@ -16,12 +16,6 @@ from discord import app_commands
 from discord.ext import commands, tasks
 from dotenv import load_dotenv
 
-try:
-    from telethon import TelegramClient, events
-except Exception:
-    TelegramClient = None
-    events = None
-
 load_dotenv()
 
 @dataclass(frozen=True)
@@ -116,12 +110,12 @@ VZP_PING_ROLE_IDS = [int(x) for x in os.getenv('VZP_PING_ROLE_IDS', '15312463597
 VZP_CREATOR_ROLE_ID = int(os.getenv('VZP_CREATOR_ROLE_ID', '1532160160330551478'))
 VZP_ADMIN_ROLE_IDS = [int(x) for x in os.getenv('VZP_ADMIN_ROLE_IDS', '1531246359729016972,1531246359729016969,1531246359729016967').split(',') if x]
 
-TG_API_ID = int(os.getenv('TG_API_ID', '0'))
-TG_API_HASH = os.getenv('TG_API_HASH', '')
-TG_HELPER_CHAT_ID = int(os.getenv('TG_HELPER_CHAT_ID', '7621046969'))
-TG_WAR_CHANNEL_ID = int(os.getenv('TG_WAR_CHANNEL_ID', '1531246363009089638'))
-TG_SESSION_FILE = Path(__file__).with_name('telegram-session')
-TG_WAR_STATE_FILE = Path(__file__).with_name('tg-war-state.json')
+WAR_API_URL = os.getenv('WAR_API_URL', 'https://vzp-gta5rp.com/api/events')
+WAR_ORG_NAME = os.getenv('WAR_ORG_NAME', 'C E N T')
+WAR_SERVER_ID = int(os.getenv('WAR_SERVER_ID', '1'))
+WAR_CHANNEL_ID = int(os.getenv('WAR_CHANNEL_ID', '1531246363009089638'))
+WAR_POLL_SECONDS = int(os.getenv('WAR_POLL_SECONDS', '30'))
+WAR_STATE_FILE = Path(__file__).with_name('war-state.json')
 
 NVIDIA_API_KEY = os.getenv('NVIDIA_API_KEY')
 NVIDIA_API_URL = 'https://integrate.api.nvidia.com/v1/chat/completions'
@@ -1244,6 +1238,9 @@ def build_vzp_embed(entry: dict, guild: discord.Guild | None) -> discord.Embed:
         embed.add_field(name=size_label, value=f'{size}x{size}', inline=True)
     else:
         embed.add_field(name=size_label, value=entry.get('text') or '—', inline=True)
+    point = entry.get('point')
+    if point:
+        embed.add_field(name='Точка', value=point, inline=False)
     embed.add_field(name='Кто нажал', value=build_vzp_reacted(entry, guild), inline=False)
     embed.set_image(url=f'attachment://{image_name}')
     return embed
@@ -2314,7 +2311,7 @@ async def on_ready() -> None:
     asyncio.create_task(refresh_recruit_app_banner_safely())
     asyncio.create_task(refresh_admin_panel_safely())
     asyncio.create_task(refresh_blacklist_safely())
-    asyncio.create_task(tg_war_monitor())
+    asyncio.create_task(war_monitor())
     await asyncio.sleep(2)
     print('All on_ready tasks launched')
     try:
@@ -3338,25 +3335,26 @@ async def vzp_attack_cmd(interaction: discord.Interaction, size: int) -> None:
     await publish_vzp_banner(interaction, 'attack', size)
 
 
-# --------------- Telegram: война за точки (нам забили) ---------------
+# --------------- Война за точки: мониторинг vzp-gta5rp.com ---------------
 
-tg_client = None
-
-
-def tg_available() -> bool:
-    return TelegramClient is not None and TG_API_ID and TG_API_HASH
+def read_war_state() -> dict:
+    return read_json(WAR_STATE_FILE)
 
 
-async def tg_get_client():
-    global tg_client
-    if not tg_available():
-        return None
-    if tg_client is None:
-        tg_client = TelegramClient(str(TG_SESSION_FILE), TG_API_ID, TG_API_HASH)
-    return tg_client
+def write_war_state(data: dict) -> None:
+    write_json(WAR_STATE_FILE, data)
 
 
-async def publish_vzp_banner_sms(channel_id: int, size: int, war_time: str) -> None:
+def parse_war_started_at(value: str) -> str:
+    try:
+        dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+        local = dt + timedelta(hours=3)
+        return local.strftime('%H:%M')
+    except Exception:
+        return value or '—'
+
+
+async def publish_war_banner(channel_id: int, size: int, war_time: str, point_name: str = '') -> None:
     channel = bot.get_channel(channel_id)
     if channel is None:
         try:
@@ -3364,13 +3362,13 @@ async def publish_vzp_banner_sms(channel_id: int, size: int, war_time: str) -> N
         except Exception:
             channel = None
     if not isinstance(channel, discord.TextChannel):
-        print(f'[TG] Канал {channel_id} не найден, банер не отправлен')
+        print(f'[WAR] Канал {channel_id} не найден, банер не отправлен')
         return
     image_file = VZP_DEF_IMAGE_FILE
     if not image_file.is_file():
-        print('[TG] Файл def.png не найден')
+        print('[WAR] Файл def.png не найден')
         return
-    entry = {'type': 'def', 'size': size, 'time': war_time, 'reacts': {}, 'channel_id': channel_id}
+    entry = {'type': 'def', 'size': size, 'time': war_time, 'point': point_name, 'reacts': {}, 'channel_id': channel_id}
     embed = build_vzp_embed(entry, channel.guild)
     message = await channel.send(
         embed=embed,
@@ -3381,63 +3379,46 @@ async def publish_vzp_banner_sms(channel_id: int, size: int, war_time: str) -> N
     state = read_vzp_state()
     state[str(message.id)] = entry
     write_vzp_state(state)
-    print(f'[TG] Банер "нам забили" отправлен: {size}x{size}, {war_time}')
+    print(f'[WAR] Банер "нам забили" отправлен: {size}x{size}, {war_time}, точка: {point_name}')
 
 
-async def tg_handle_war_message(event) -> None:
-    try:
-        text = (event.raw_text or '').strip()
-        if not text:
-            return
-        if 'забили Вашей организации войну' not in text:
-            return
-        m = re.search(r'на\s+(\d{1,2}:\d{2})[,\s]+(\d+)\s*[хxX×]\s*(\d+)', text)
-        if not m:
-            print(f'[TG] Не удалось распознать время/размер: {text[:200]}')
-            return
-        war_time = m.group(1)
-        size = int(m.group(2))
-        print(f'[TG] Обнаружено "нам забили": {size}x{size}, {war_time}')
-        await publish_vzp_banner_sms(TG_WAR_CHANNEL_ID, size, war_time)
-    except Exception as exc:
-        print(f'[TG] Ошибка обработки сообщения: {exc}')
-
-
-async def tg_war_monitor() -> None:
-    if not tg_available():
-        print('[TG] Telethon недоступен, монитор не запущен')
-        return
-    try:
-        client = await tg_get_client()
-        await client.connect()
-        if not await client.is_user_authorized():
-            print('[TG] Сессия не авторизована, ждём вход через /tg_phone')
-            return
-
-        @client.on(events.NewMessage(chats=TG_HELPER_CHAT_ID))
-        async def handler(event):
-            await tg_handle_war_message(event)
-
-        print(f'[TG] Монитор запущен, слушаю чат {TG_HELPER_CHAT_ID}')
-        await client.run_until_disconnected()
-    except Exception as exc:
-        print(f'[TG] Ошибка монитора: {exc}')
-
-
-@bot.tree.command(name='tg_status', description='Статус Telegram-моста')
-async def tg_status_cmd(interaction: discord.Interaction) -> None:
-    if not tg_available():
-        await interaction.response.send_message('Telethon недоступен.', ephemeral=True)
-        return
-    await interaction.response.defer(ephemeral=True)
-    try:
-        client = await tg_get_client()
-        await client.connect()
-        authorized = await client.is_user_authorized()
-        status = '✅ авторизован' if authorized else '❌ не авторизован'
-        await interaction.followup.send(f'Telegram-мост: **{status}**', ephemeral=True)
-    except Exception as exc:
-        await interaction.followup.send(f'Ошибка: {exc}', ephemeral=True)
+async def war_monitor() -> None:
+    print(f'[WAR] Монитор запущен: {WAR_API_URL}, семья "{WAR_ORG_NAME}", сервер {WAR_SERVER_ID}')
+    while True:
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(WAR_API_URL, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                    if resp.status != 200:
+                        raise RuntimeError(f'HTTP {resp.status}')
+                    events = await resp.json()
+            state = read_war_state()
+            state.setdefault('seen', {})
+            changed = False
+            for ev in events or []:
+                if not isinstance(ev, dict):
+                    continue
+                server_id = ev.get('serverId')
+                defender = ev.get('defenderName')
+                event_id = ev.get('eventId')
+                if server_id != WAR_SERVER_ID or defender != WAR_ORG_NAME or not event_id:
+                    continue
+                if state['seen'].get(event_id):
+                    continue
+                state['seen'][event_id] = ev.get('startedAt') or ''
+                changed = True
+                size = int(ev.get('maxPlayers') or 0)
+                war_time = parse_war_started_at(ev.get('startedAt') or '')
+                point_name = ev.get('pointName') or ''
+                print(f'[WAR] Новое событие: {event_id} {size}x{size} {war_time} {point_name}')
+                try:
+                    await publish_war_banner(WAR_CHANNEL_ID, size, war_time, point_name)
+                except Exception as exc:
+                    print(f'[WAR] Ошибка отправки банера: {exc}')
+            if changed:
+                write_war_state(state)
+        except Exception as exc:
+            print(f'[WAR] Ошибка опроса: {exc}')
+        await asyncio.sleep(WAR_POLL_SECONDS)
 
 
 # --------------- Бот запускается ---------------

@@ -3440,7 +3440,7 @@ def _war_stats_font(size: int):
 def _war_stats_utc_to_msk(value: str) -> str:
     try:
         dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
-        return (dt + timedelta(hours=3)).strftime('%d.%m.%Y %H:%M')
+        return dt.strftime('%d.%m.%Y %H:%M')
     except Exception:
         return value or '—'
 

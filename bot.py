@@ -3445,12 +3445,14 @@ def _war_stats_utc_to_msk(value: str) -> str:
         return value or '—'
 
 
-def _war_stats_next_text(value: str) -> str:
+def _war_stats_next_text(value: str, hours: int) -> str:
+    hours = max(1, hours)
+    hour_word = 'час' if hours == 1 else 'часа'
     try:
         dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
-        return f'через 2 часа  •  {dt.strftime("%H:%M")}'
+        return f'через {hours} {hour_word}  •  {dt.strftime("%H:%M")}'
     except Exception:
-        return 'через 2 часа'
+        return f'через {hours} {hour_word}'
 
 
 def _war_stats_truncate(text: str, max_len: int) -> str:
@@ -3485,12 +3487,13 @@ def build_war_stats_image(event: dict) -> Path:
     point = event.get('pointName') or '—'
     max_players = event.get('maxPlayers') or 0
 
+    next_hours = 1 if is_def else 2
     next_war = ''
     ended_raw = event.get('endedAt') or ''
     if ended_raw:
         try:
             dt_end = datetime.fromisoformat(ended_raw.replace('Z', '+00:00'))
-            next_war = (dt_end + timedelta(hours=2)).strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
+            next_war = (dt_end + timedelta(hours=next_hours)).strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
         except Exception:
             next_war = ''
 
@@ -3527,7 +3530,7 @@ def build_war_stats_image(event: dict) -> Path:
     if next_war:
         right_x = W - MARGIN
         next_label = 'СЛЕДУЮЩИЙ БОЙ'
-        next_info = _war_stats_next_text(next_war)
+        next_info = _war_stats_next_text(next_war, next_hours)
         label_w = draw.textlength(next_label, font=f_sub)
         info_w = draw.textlength(next_info, font=f_sub)
         draw.text((right_x - label_w, 92), next_label, font=f_sub, fill=(250, 204, 21))

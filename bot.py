@@ -3329,14 +3329,11 @@ async def vzp_def_cmd(interaction: discord.Interaction, size: int) -> None:
 
 
 @bot.tree.command(name='vzp_attack', description='Отправить банер атаки VZP')
-async def vzp_attack_cmd(interaction: discord.Interaction, size: int = 0) -> None:
+async def vzp_attack_cmd(interaction: discord.Interaction) -> None:
     if not isinstance(interaction.user, discord.Member) or not any(role.id == VZP_CREATOR_ROLE_ID for role in interaction.user.roles):
         await interaction.response.send_message('Нужна роль для создания банера VZP.', ephemeral=True)
         return
-    if size < 0:
-        await interaction.response.send_message('Размер должен быть неотрицательным числом.', ephemeral=True)
-        return
-    await publish_vzp_banner(interaction, 'attack', size)
+    await publish_vzp_banner(interaction, 'attack', 0)
 
 
 # --------------- Война за точки: мониторинг vzp-gta5rp.com ---------------

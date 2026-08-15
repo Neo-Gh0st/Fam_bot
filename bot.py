@@ -1233,6 +1233,8 @@ def build_vzp_embed(entry: dict, guild: discord.Guild | None) -> discord.Embed:
     size_label = 'Размер защиты' if is_def else 'Размер атаки'
     if size and str(size).isdigit():
         embed.add_field(name=size_label, value=f'{size}x{size}', inline=True)
+    elif size == 0:
+        embed.add_field(name=size_label, value='Без лимита', inline=True)
     else:
         embed.add_field(name=size_label, value=entry.get('text') or '—', inline=True)
     point = entry.get('point')
@@ -3282,8 +3284,8 @@ async def publish_vzp_banner(interaction: discord.Interaction, vzp_type: str, si
     if not isinstance(interaction.user, discord.Member) or not any(role.id == VZP_CREATOR_ROLE_ID for role in interaction.user.roles):
         await interaction.response.send_message('Нужна роль для создания банера VZP.', ephemeral=True)
         return
-    if size < 1:
-        await interaction.response.send_message('Размер должен быть положительным числом.', ephemeral=True)
+    if size < 0:
+        await interaction.response.send_message('Размер должен быть неотрицательным числом.', ephemeral=True)
         return
     image_file = vzp_image_file(vzp_type)
     if not image_file.is_file():
@@ -3322,12 +3324,12 @@ async def vzp_def_cmd(interaction: discord.Interaction, size: int) -> None:
 
 
 @bot.tree.command(name='vzp_attack', description='Отправить банер атаки VZP')
-async def vzp_attack_cmd(interaction: discord.Interaction, size: int) -> None:
+async def vzp_attack_cmd(interaction: discord.Interaction, size: int = 0) -> None:
     if not isinstance(interaction.user, discord.Member) or not any(role.id == VZP_CREATOR_ROLE_ID for role in interaction.user.roles):
         await interaction.response.send_message('Нужна роль для создания банера VZP.', ephemeral=True)
         return
-    if size < 1:
-        await interaction.response.send_message('Размер должен быть положительным числом.', ephemeral=True)
+    if size < 0:
+        await interaction.response.send_message('Размер должен быть неотрицательным числом.', ephemeral=True)
         return
     await publish_vzp_banner(interaction, 'attack', size)
 

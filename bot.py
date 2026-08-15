@@ -3421,6 +3421,22 @@ async def war_monitor() -> None:
         await asyncio.sleep(WAR_POLL_SECONDS)
 
 
+@bot.tree.command(name='war_test', description='Тест: отправить банер "нам забили" в канал войн')
+async def war_test_cmd(interaction: discord.Interaction, size: int = 9, time: str = '23:15') -> None:
+    if not isinstance(interaction.user, discord.Member) or not any(role.id == VZP_CREATOR_ROLE_ID for role in interaction.user.roles):
+        await interaction.response.send_message('Нужна роль для теста.', ephemeral=True)
+        return
+    if size < 1:
+        await interaction.response.send_message('Размер должен быть положительным числом.', ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+    try:
+        await publish_war_banner(WAR_CHANNEL_ID, size, time, 'Тестовая точка')
+        await interaction.followup.send('✅ Тестовый банер отправлен.', ephemeral=True)
+    except Exception as exc:
+        await interaction.followup.send(f'Ошибка: {exc}', ephemeral=True)
+
+
 # --------------- Бот запускается ---------------
 
 while True:

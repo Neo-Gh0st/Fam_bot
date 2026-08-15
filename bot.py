@@ -3487,7 +3487,7 @@ def build_war_stats_image(event: dict) -> Path:
     point = event.get('pointName') or '—'
     max_players = event.get('maxPlayers') or 0
 
-    next_hours = 1 if is_def else 2
+    next_hours = 1.5 if is_def else 3
     next_war = ''
     ended_raw = event.get('endedAt') or ''
     if ended_raw:

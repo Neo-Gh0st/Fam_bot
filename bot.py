@@ -3537,12 +3537,11 @@ def build_family_panel_embed(fam_histories: dict) -> discord.Embed:
         history = fam_histories.get(fam_id) or []
         last_attack = _war_family_last(history, 'ATK')
         last_def = _war_family_last(history, 'DEF')
-        url = f'https://vzp-gta5rp.com/stats/families/{fam_id}'
         lines = [
             f'🔴 Атака: {_war_family_point(last_attack)} · {_war_family_cd_text(last_attack.get("date")) if last_attack else "—"}',
             f'🔵 Деф:   {_war_family_point(last_def)} · {_war_family_cd_text(last_def.get("date")) if last_def else "—"}',
         ]
-        embed.add_field(name=f'{idx}. [{fam_name}]({url})', value='\n'.join(lines), inline=False)
+        embed.add_field(name=f'{idx}. {fam_name}', value='\n'.join(lines), inline=False)
     return embed
 
 

@@ -3711,7 +3711,7 @@ async def points_panel_monitor() -> None:
     deep_scan_start = 0.0
     while True:
         try:
-            now = _war_now_msk().timestamp()
+            now = time.monotonic()
             async with aiohttp.ClientSession(headers=headers) as session:
                 if not owners or (now - deep_scan_start) >= WAR_POINTS_DEEP_RESCAN_SECONDS:
                     owners = await _war_points_deep_scan(session, base)

@@ -3585,14 +3585,23 @@ async def family_panel_monitor() -> None:
                     message = await channel.fetch_message(panel_id)
                 except Exception:
                     message = None
+            duplicates = []
             if message is None:
-                async for msg in channel.history(limit=50):
+                async for msg in channel.history(limit=200):
                     if msg.author.id == bot.user.id and msg.embeds and msg.embeds[0].title == '⚔️ Кд на атаку по семьям':
-                        message = msg
-                        panel_id = msg.id
-                        write_json(WAR_FAMILY_PANEL_FILE, {'message_id': msg.id})
-                        print(f'[FAMPANEL] Найдена существующая панель: {msg.id}')
-                        break
+                        if message is None:
+                            message = msg
+                            panel_id = msg.id
+                            write_json(WAR_FAMILY_PANEL_FILE, {'message_id': msg.id})
+                            print(f'[FAMPANEL] Найдена существующая панель: {msg.id}')
+                        else:
+                            duplicates.append(msg)
+                for dup in duplicates:
+                    try:
+                        await dup.delete()
+                        print(f'[FAMPANEL] Удалён дубликат панели: {dup.id}')
+                    except Exception as exc:
+                        print(f'[FAMPANEL] Ошибка удаления дубликата {dup.id}: {exc}')
             if message is not None:
                 await message.edit(embed=embed)
             else:

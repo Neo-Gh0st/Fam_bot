@@ -3490,17 +3490,19 @@ def _war_family_last(history: list, role: str) -> dict | None:
     return None
 
 
-def _war_family_cd_text(date_raw: str) -> str:
+def _war_family_cd_text(date_raw: str, role: str) -> str:
     try:
         dt = datetime.fromisoformat(date_raw.replace('Z', '+00:00'))
-        end = dt + timedelta(hours=WAR_ATTACK_CD_HOURS)
+        hours = 1.5 if role == 'DEF' else WAR_ATTACK_CD_HOURS
+        end = dt + timedelta(hours=hours)
         now = datetime.now(timezone.utc)
         if end <= now:
             return '✅ кд прошёл'
         left = end - now
-        hours = int(left.total_seconds() // 3600)
-        minutes = int((left.total_seconds() % 3600) // 60)
-        return f'⏰ кд до {end.strftime("%H:%M")} · осталось {hours}ч {minutes}м'
+        total_min = int(left.total_seconds() // 60)
+        hh = total_min // 60
+        mm = total_min % 60
+        return f'⏰ кд до {end.strftime("%H:%M")} · осталось {hh}ч {mm}м'
     except Exception:
         return '—'
 
@@ -3538,8 +3540,8 @@ def build_family_panel_embed(fam_histories: dict) -> discord.Embed:
         last_attack = _war_family_last(history, 'ATK')
         last_def = _war_family_last(history, 'DEF')
         lines = [
-            f'🔴 Атака: {_war_family_point(last_attack)} · {_war_family_cd_text(last_attack.get("date")) if last_attack else "—"}',
-            f'🔵 Деф:   {_war_family_point(last_def)} · {_war_family_cd_text(last_def.get("date")) if last_def else "—"}',
+            f'🔴 Атака: {_war_family_point(last_attack)} · {_war_family_cd_text(last_attack.get("date"), "ATK") if last_attack else "—"}',
+            f'🔵 Деф:   {_war_family_point(last_def)} · {_war_family_cd_text(last_def.get("date"), "DEF") if last_def else "—"}',
         ]
         embed.add_field(name=f'{idx}. {fam_name}', value='\n'.join(lines), inline=False)
     return embed

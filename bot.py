@@ -3467,19 +3467,26 @@ def write_war_stats_sent(data: dict) -> None:
     write_json(WAR_STATS_SENT_FILE, data)
 
 
+def _war_parse_msk(value: str):
+    try:
+        return datetime.fromisoformat(str(value)[:19])
+    except Exception:
+        return None
+
+
+def _war_now_msk():
+    return datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=3)
+
+
 def _war_attack_cd_passed(entry: dict) -> bool:
     if entry.get('role') != 'ATK':
         return False
     if entry.get('isWin') is None:
         return False
-    date_raw = entry.get('date') or ''
-    if not date_raw:
+    dt = _war_parse_msk(entry.get('date') or '')
+    if dt is None:
         return False
-    try:
-        dt = datetime.fromisoformat(date_raw.replace('Z', '+00:00'))
-    except Exception:
-        return False
-    return dt + timedelta(hours=WAR_ATTACK_CD_HOURS) <= datetime.now(timezone.utc)
+    return dt + timedelta(hours=WAR_ATTACK_CD_HOURS) <= _war_now_msk()
 
 
 def _war_family_last(history: list, role: str) -> dict | None:
@@ -3491,20 +3498,19 @@ def _war_family_last(history: list, role: str) -> dict | None:
 
 
 def _war_family_cd_text(date_raw: str, role: str) -> str:
-    try:
-        dt = datetime.fromisoformat(date_raw.replace('Z', '+00:00'))
-        hours = 1.5 if role == 'DEF' else WAR_ATTACK_CD_HOURS
-        end = dt + timedelta(hours=hours)
-        now = datetime.now(timezone.utc)
-        if end <= now:
-            return '✅ кд прошёл'
-        left = end - now
-        total_min = int(left.total_seconds() // 60)
-        hh = total_min // 60
-        mm = total_min % 60
-        return f'⏰ кд до {end.strftime("%H:%M")} · осталось {hh}ч {mm}м'
-    except Exception:
+    dt = _war_parse_msk(date_raw)
+    if dt is None:
         return '—'
+    hours = 1.5 if role == 'DEF' else WAR_ATTACK_CD_HOURS
+    end = dt + timedelta(hours=hours)
+    now = _war_now_msk()
+    if end <= now:
+        return '✅ кд прошёл'
+    left = end - now
+    total_min = int(left.total_seconds() // 60)
+    hh = total_min // 60
+    mm = total_min % 60
+    return f'⏰ кд до {end.strftime("%H:%M")} · осталось {hh}ч {mm}м'
 
 
 def _war_family_result(entry: dict) -> str:
@@ -3522,11 +3528,10 @@ def _war_family_point(entry: dict | None) -> str:
 
 
 def _war_stats_full(value: str) -> str:
-    try:
-        dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
-        return dt.strftime('%d.%m в %H:%M')
-    except Exception:
+    dt = _war_parse_msk(value)
+    if dt is None:
         return '—'
+    return dt.strftime('%d.%m в %H:%M')
 
 
 def build_family_panel_embed(fam_histories: dict) -> discord.Embed:
@@ -3612,29 +3617,26 @@ def _war_stats_font(size: int):
 
 
 def _war_stats_utc_to_msk(value: str) -> str:
-    try:
-        dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
-        return dt.strftime('%d.%m.%Y %H:%M')
-    except Exception:
+    dt = _war_parse_msk(value)
+    if dt is None:
         return value or '—'
+    return dt.strftime('%d.%m.%Y %H:%M')
 
 
 def _war_stats_msk_hm(value: str) -> str:
-    try:
-        dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
-        return (dt + timedelta(hours=3)).strftime('%H:%M')
-    except Exception:
+    dt = _war_parse_msk(value)
+    if dt is None:
         return '—'
+    return dt.strftime('%H:%M')
 
 
 def _war_stats_next_text(value: str, hours: int) -> str:
     hours = max(1, hours)
     hour_word = 'час' if hours == 1 else 'часа'
-    try:
-        dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
-        return f'через {hours} {hour_word}  •  {dt.strftime("%H:%M")}'
-    except Exception:
+    dt = _war_parse_msk(value)
+    if dt is None:
         return f'через {hours} {hour_word}'
+    return f'через {hours} {hour_word}  •  {dt.strftime("%H:%M")}'
 
 
 def _war_stats_truncate(text: str, max_len: int) -> str:
@@ -3672,12 +3674,9 @@ def build_war_stats_image(event: dict) -> Path:
     next_hours = 1.5 if is_def else 3
     next_war = ''
     started_raw = event.get('startedAt') or ''
-    if started_raw:
-        try:
-            dt_start = datetime.fromisoformat(started_raw.replace('Z', '+00:00'))
-            next_war = (dt_start + timedelta(hours=next_hours)).strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
-        except Exception:
-            next_war = ''
+    dt_start = _war_parse_msk(started_raw)
+    if dt_start is not None:
+        next_war = (dt_start + timedelta(hours=next_hours)).strftime('%Y-%m-%dT%H:%M:%S')
 
     MARGIN = 40
     W = 1180
@@ -3880,11 +3879,9 @@ async def war_stats_monitor() -> None:
                     opponent = (h.get('opponentName') or '?').strip()
                     point = (h.get('map') or '').split(' — ')[0]
                     cd_end = ''
-                    try:
-                        dt = datetime.fromisoformat((h.get('date') or '').replace('Z', '+00:00'))
-                        cd_end = (dt + timedelta(hours=WAR_ATTACK_CD_HOURS)).strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
-                    except Exception:
-                        pass
+                    dt = _war_parse_msk(h.get('date') or '')
+                    if dt is not None:
+                        cd_end = (dt + timedelta(hours=WAR_ATTACK_CD_HOURS)).strftime('%Y-%m-%dT%H:%M:%S')
                     cd_end_msk = _war_stats_msk_hm(cd_end) if cd_end else '—'
                     try:
                         await war_channel.send(f'⏰ Кд на атаку прошло!\nПротив: {opponent} · {point}\nКд закончился в {cd_end_msk} (МСК)')

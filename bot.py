@@ -3497,6 +3497,14 @@ def _war_stats_utc_to_msk(value: str) -> str:
         return value or '—'
 
 
+def _war_stats_msk_hm(value: str) -> str:
+    try:
+        dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+        return (dt + timedelta(hours=3)).strftime('%H:%M')
+    except Exception:
+        return '—'
+
+
 def _war_stats_next_text(value: str, hours: int) -> str:
     hours = max(1, hours)
     hour_word = 'час' if hours == 1 else 'часа'
@@ -3682,6 +3690,11 @@ async def war_stats_monitor() -> None:
                 await asyncio.sleep(WAR_POLL_SECONDS)
                 continue
 
+            if not state['cd_sent']:
+                state['cd_sent'] = [h.get('eventId') for h in history or [] if h.get('eventId') and h.get('role') == 'ATK' and _war_attack_cd_passed(h)]
+                write_war_stats_sent(state)
+                print(f'[WARSTATS] Инициализация cd_sent: помечены {len(state["cd_sent"])} старых боёв (кд не отправляем)')
+
             in_progress = {h.get('eventId') for h in history or [] if h.get('eventId') and h.get('isWin') is None}
             if in_progress:
                 old_len = len(state['sent'])
@@ -3744,9 +3757,16 @@ async def war_stats_monitor() -> None:
                         continue
                     opponent = (h.get('opponentName') or '?').strip()
                     point = (h.get('map') or '').split(' — ')[0]
+                    cd_end = ''
                     try:
-                        await war_channel.send(f'⏰ Кд на атаку прошло!\nПротив: {opponent} · {point}')
-                        print(f'[WARSTATS] Кд на атаку прошло: {event_id} ({opponent})')
+                        dt = datetime.fromisoformat((h.get('date') or '').replace('Z', '+00:00'))
+                        cd_end = (dt + timedelta(hours=WAR_ATTACK_CD_HOURS)).strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
+                    except Exception:
+                        pass
+                    cd_end_msk = _war_stats_msk_hm(cd_end) if cd_end else '—'
+                    try:
+                        await war_channel.send(f'⏰ Кд на атаку прошло!\nПротив: {opponent} · {point}\nКд закончился в {cd_end_msk} (МСК)')
+                        print(f'[WARSTATS] Кд на атаку прошло: {event_id} ({opponent}) в {cd_end_msk}')
                     except Exception as exc:
                         print(f'[WARSTATS] Ошибка отправки кд {event_id}: {exc}')
                     state['cd_sent'].append(event_id)

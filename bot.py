@@ -3504,8 +3504,7 @@ def _war_family_cd_text(date_raw: str) -> str:
         left = end - now
         hours = int(left.total_seconds() // 3600)
         minutes = int((left.total_seconds() % 3600) // 60)
-        end_msk = (end + timedelta(hours=3)).strftime('%H:%M')
-        return f'⏰ кд до {end_msk} МСК · осталось {hours}ч {minutes}м'
+        return f'⏰ кд до {end.strftime("%H:%M")} · осталось {hours}ч {minutes}м'
     except Exception:
         return '—'
 
@@ -3514,13 +3513,13 @@ def _war_family_point(entry: dict | None) -> str:
     if not entry:
         return 'не били'
     point = (entry.get('map') or '').split(' — ')[0] or '?'
-    return f"{_war_stats_msk_full(entry.get('date'))} · {point}"
+    return f"{_war_stats_full(entry.get('date'))} · {point}"
 
 
-def _war_stats_msk_full(value: str) -> str:
+def _war_stats_full(value: str) -> str:
     try:
         dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
-        return (dt + timedelta(hours=3)).strftime('%d.%m в %H:%M')
+        return dt.strftime('%d.%m в %H:%M')
     except Exception:
         return '—'
 

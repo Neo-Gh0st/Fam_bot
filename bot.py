@@ -3482,13 +3482,9 @@ def _war_attack_cd_passed(entry: dict) -> bool:
     return dt + timedelta(hours=WAR_ATTACK_CD_HOURS) <= datetime.now(timezone.utc)
 
 
-def _war_family_last(history: list, fam_name: str, role: str) -> dict | None:
-    fam_name_norm = ' '.join(fam_name.split())
+def _war_family_last(history: list, role: str) -> dict | None:
     for h in history or []:
         if h.get('role') != role:
-            continue
-        opp = ' '.join((h.get('opponentName') or '').split())
-        if opp != fam_name_norm:
             continue
         return h
     return None
@@ -3509,11 +3505,18 @@ def _war_family_cd_text(date_raw: str) -> str:
         return '—'
 
 
+def _war_family_result(entry: dict) -> str:
+    is_win = entry.get('isWin')
+    if is_win is None:
+        return 'идёт'
+    return 'победа' if is_win else 'поражение'
+
+
 def _war_family_point(entry: dict | None) -> str:
     if not entry:
         return 'не били'
     point = (entry.get('map') or '').split(' — ')[0] or '?'
-    return f"{_war_stats_full(entry.get('date'))} · {point}"
+    return f"{_war_stats_full(entry.get('date'))} · {point} · {_war_family_result(entry)}"
 
 
 def _war_stats_full(value: str) -> str:
@@ -3524,19 +3527,20 @@ def _war_stats_full(value: str) -> str:
         return '—'
 
 
-def build_family_panel_embed(history: list) -> discord.Embed:
+def build_family_panel_embed(fam_histories: dict) -> discord.Embed:
     embed = discord.Embed(
         title='⚔️ Кд на атаку по семьям',
         color=0x38BDF8,
         timestamp=discord.utils.utcnow(),
     )
     for idx, (fam_id, fam_name) in enumerate(WAR_FAMILIES, start=1):
-        last_attack = _war_family_last(history, fam_name, 'DEF')
-        last_def = _war_family_last(history, fam_name, 'ATK')
+        history = fam_histories.get(fam_id) or []
+        last_attack = _war_family_last(history, 'ATK')
+        last_def = _war_family_last(history, 'DEF')
         url = f'https://vzp-gta5rp.com/stats/families/{fam_id}'
         lines = [
-            f'🔴 Их атака: {_war_family_point(last_attack)} · {_war_family_cd_text(last_attack.get("date")) if last_attack else "—"}',
-            f'🔵 Их деф:   {_war_family_point(last_def)} · {_war_family_cd_text(last_def.get("date")) if last_def else "—"}',
+            f'🔴 Атака: {_war_family_point(last_attack)} · {_war_family_cd_text(last_attack.get("date")) if last_attack else "—"}',
+            f'🔵 Деф:   {_war_family_point(last_def)} · {_war_family_cd_text(last_def.get("date")) if last_def else "—"}',
         ]
         embed.add_field(name=f'{idx}. [{fam_name}]({url})', value='\n'.join(lines), inline=False)
     return embed
@@ -3545,16 +3549,20 @@ def build_family_panel_embed(history: list) -> discord.Embed:
 async def family_panel_monitor() -> None:
     print(f'[FAMPANEL] Монитор запущен: канал {WAR_FAMILY_PANEL_CHANNEL_ID}')
     base = WAR_API_URL.rsplit('/', 1)[0]
-    history_url = f'{base}/stats/organizations/{WAR_ORG_ID}/history'
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Accept': 'application/json'}
     panel_id = read_json(WAR_FAMILY_PANEL_FILE).get('message_id') if isinstance(read_json(WAR_FAMILY_PANEL_FILE), dict) else None
     while True:
         try:
-            async with aiohttp.ClientSession(headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Accept': 'application/json'}) as session:
-                async with session.get(history_url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
-                    if resp.status != 200:
-                        raise RuntimeError(f'HTTP {resp.status}')
-                    history = await resp.json()
-            embed = build_family_panel_embed(history)
+            fam_histories = {}
+            async with aiohttp.ClientSession(headers=headers) as session:
+                for fam_id, _fam_name in WAR_FAMILIES:
+                    try:
+                        async with session.get(f'{base}/stats/organizations/{fam_id}/history', timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                            if resp.status == 200:
+                                fam_histories[fam_id] = await resp.json()
+                    except Exception as exc:
+                        print(f'[FAMPANEL] Ошибка истории семьи {fam_id}: {exc}')
+            embed = build_family_panel_embed(fam_histories)
             channel = bot.get_channel(WAR_FAMILY_PANEL_CHANNEL_ID)
             if not isinstance(channel, discord.TextChannel):
                 try:
@@ -3943,12 +3951,16 @@ async def war_test_family_panel_cmd(interaction: discord.Interaction) -> None:
     try:
         base = WAR_API_URL.rsplit('/', 1)[0]
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Accept': 'application/json'}
+        fam_histories = {}
         async with aiohttp.ClientSession(headers=headers) as session:
-            async with session.get(f'{base}/stats/organizations/{WAR_ORG_ID}/history', timeout=aiohttp.ClientTimeout(total=15)) as resp:
-                if resp.status != 200:
-                    raise RuntimeError(f'HTTP {resp.status}')
-                history = await resp.json()
-        embed = build_family_panel_embed(history)
+            for fam_id, _fam_name in WAR_FAMILIES:
+                try:
+                    async with session.get(f'{base}/stats/organizations/{fam_id}/history', timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                        if resp.status == 200:
+                            fam_histories[fam_id] = await resp.json()
+                except Exception:
+                    pass
+        embed = build_family_panel_embed(fam_histories)
         channel = bot.get_channel(WAR_FAMILY_PANEL_CHANNEL_ID)
         if channel is None:
             channel = await bot.fetch_channel(WAR_FAMILY_PANEL_CHANNEL_ID)

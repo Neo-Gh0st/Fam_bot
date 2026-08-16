@@ -121,6 +121,9 @@ WAR_ATTACK_CD_HOURS = int(os.getenv('WAR_ATTACK_CD_HOURS', '3'))
 WAR_STATE_FILE = Path(__file__).with_name('war-state.json')
 WAR_STATS_SENT_FILE = Path(__file__).with_name('war-stats-sent.json')
 WAR_STATS_FONT_FILE = Path(__file__).parent / 'assets' / 'DejaVuSans.ttf'
+WAR_FAMILY_PANEL_CHANNEL_ID = int(os.getenv('WAR_FAMILY_PANEL_CHANNEL_ID', '1531246363009089637'))
+WAR_FAMILY_PANEL_FILE = Path(__file__).with_name('war-family-panel.json')
+WAR_FAMILIES = [(372, 'Main'), (10701, 'Scammers'), (123853, 'A M O R A L'), (112217, 'Clan Soprano'), (147788, 'MODERN')]
 
 NVIDIA_API_KEY = os.getenv('NVIDIA_API_KEY')
 NVIDIA_API_URL = 'https://integrate.api.nvidia.com/v1/chat/completions'
@@ -2352,6 +2355,7 @@ async def on_ready() -> None:
     asyncio.create_task(refresh_blacklist_safely())
     asyncio.create_task(war_monitor())
     asyncio.create_task(war_stats_monitor())
+    asyncio.create_task(family_panel_monitor())
     await asyncio.sleep(2)
     print('All on_ready tasks launched')
     try:
@@ -3478,6 +3482,108 @@ def _war_attack_cd_passed(entry: dict) -> bool:
     return dt + timedelta(hours=WAR_ATTACK_CD_HOURS) <= datetime.now(timezone.utc)
 
 
+def _war_family_last(history: list, fam_name: str, role: str) -> dict | None:
+    fam_name_norm = ' '.join(fam_name.split())
+    for h in history or []:
+        if h.get('role') != role:
+            continue
+        opp = ' '.join((h.get('opponentName') or '').split())
+        if opp != fam_name_norm:
+            continue
+        return h
+    return None
+
+
+def _war_family_cd_text(date_raw: str) -> str:
+    try:
+        dt = datetime.fromisoformat(date_raw.replace('Z', '+00:00'))
+        end = dt + timedelta(hours=WAR_ATTACK_CD_HOURS)
+        now = datetime.now(timezone.utc)
+        if end <= now:
+            return '✅ кд прошёл'
+        left = end - now
+        hours = int(left.total_seconds() // 3600)
+        minutes = int((left.total_seconds() % 3600) // 60)
+        end_msk = (end + timedelta(hours=3)).strftime('%H:%M')
+        return f'⏰ кд до {end_msk} МСК · осталось {hours}ч {minutes}м'
+    except Exception:
+        return '—'
+
+
+def _war_family_point(entry: dict | None) -> str:
+    if not entry:
+        return 'не били'
+    point = (entry.get('map') or '').split(' — ')[0] or '?'
+    return f"{_war_stats_msk_full(entry.get('date'))} · {point}"
+
+
+def _war_stats_msk_full(value: str) -> str:
+    try:
+        dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+        return (dt + timedelta(hours=3)).strftime('%d.%m в %H:%M')
+    except Exception:
+        return '—'
+
+
+def build_family_panel_embed(history: list) -> discord.Embed:
+    embed = discord.Embed(
+        title='⚔️ Кд на атаку по семьям',
+        color=0x38BDF8,
+        timestamp=discord.utils.utcnow(),
+    )
+    for idx, (fam_id, fam_name) in enumerate(WAR_FAMILIES, start=1):
+        last_attack = _war_family_last(history, fam_name, 'DEF')
+        last_def = _war_family_last(history, fam_name, 'ATK')
+        url = f'https://vzp-gta5rp.com/stats/families/{fam_id}'
+        lines = [
+            f'🔴 Их атака: {_war_family_point(last_attack)} · {_war_family_cd_text(last_attack.get("date")) if last_attack else "—"}',
+            f'🔵 Их деф:   {_war_family_point(last_def)} · {_war_family_cd_text(last_def.get("date")) if last_def else "—"}',
+        ]
+        embed.add_field(name=f'{idx}. [{fam_name}]({url})', value='\n'.join(lines), inline=False)
+    return embed
+
+
+async def family_panel_monitor() -> None:
+    print(f'[FAMPANEL] Монитор запущен: канал {WAR_FAMILY_PANEL_CHANNEL_ID}')
+    base = WAR_API_URL.rsplit('/', 1)[0]
+    history_url = f'{base}/stats/organizations/{WAR_ORG_ID}/history'
+    panel_id = read_json(WAR_FAMILY_PANEL_FILE).get('message_id') if isinstance(read_json(WAR_FAMILY_PANEL_FILE), dict) else None
+    while True:
+        try:
+            async with aiohttp.ClientSession(headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Accept': 'application/json'}) as session:
+                async with session.get(history_url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                    if resp.status != 200:
+                        raise RuntimeError(f'HTTP {resp.status}')
+                    history = await resp.json()
+            embed = build_family_panel_embed(history)
+            channel = bot.get_channel(WAR_FAMILY_PANEL_CHANNEL_ID)
+            if not isinstance(channel, discord.TextChannel):
+                try:
+                    channel = await bot.fetch_channel(WAR_FAMILY_PANEL_CHANNEL_ID)
+                except Exception:
+                    channel = None
+            if not isinstance(channel, discord.TextChannel):
+                print(f'[FAMPANEL] Канал {WAR_FAMILY_PANEL_CHANNEL_ID} не найден')
+                await asyncio.sleep(WAR_POLL_SECONDS)
+                continue
+            message = None
+            if panel_id:
+                try:
+                    message = await channel.fetch_message(panel_id)
+                except Exception:
+                    message = None
+            if message is not None:
+                await message.edit(embed=embed)
+            else:
+                message = await channel.send(embed=embed)
+                write_json(WAR_FAMILY_PANEL_FILE, {'message_id': message.id})
+                panel_id = message.id
+                print(f'[FAMPANEL] Панель создана: {message.id}')
+        except Exception as exc:
+            print(f'[FAMPANEL] Ошибка опроса: {exc}')
+        await asyncio.sleep(WAR_POLL_SECONDS)
+
+
 def _war_stats_font(size: int):
     from PIL import ImageFont
     for path in (WAR_STATS_FONT_FILE, Path('C:/Windows/Fonts/arial.ttf')):
@@ -3825,6 +3931,30 @@ async def war_test_stats_cmd(interaction: discord.Interaction) -> None:
         except Exception:
             pass
         await interaction.followup.send('✅ Тестовая статистика отправлена.', ephemeral=True)
+    except Exception as exc:
+        await interaction.followup.send(f'Ошибка: {exc}', ephemeral=True)
+
+
+@bot.tree.command(name='war_test_family_panel', description='Тест: отправить панель кд по семьям в канал панели')
+async def war_test_family_panel_cmd(interaction: discord.Interaction) -> None:
+    if not isinstance(interaction.user, discord.Member) or not any(role.id == VZP_CREATOR_ROLE_ID for role in interaction.user.roles):
+        await interaction.response.send_message('Нужна роль для теста.', ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+    try:
+        base = WAR_API_URL.rsplit('/', 1)[0]
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Accept': 'application/json'}
+        async with aiohttp.ClientSession(headers=headers) as session:
+            async with session.get(f'{base}/stats/organizations/{WAR_ORG_ID}/history', timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                if resp.status != 200:
+                    raise RuntimeError(f'HTTP {resp.status}')
+                history = await resp.json()
+        embed = build_family_panel_embed(history)
+        channel = bot.get_channel(WAR_FAMILY_PANEL_CHANNEL_ID)
+        if channel is None:
+            channel = await bot.fetch_channel(WAR_FAMILY_PANEL_CHANNEL_ID)
+        await channel.send(embed=embed)
+        await interaction.followup.send('✅ Панель кд отправлена.', ephemeral=True)
     except Exception as exc:
         await interaction.followup.send(f'Ошибка: {exc}', ephemeral=True)
 

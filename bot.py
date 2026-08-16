@@ -124,6 +124,12 @@ WAR_STATS_FONT_FILE = Path(__file__).parent / 'assets' / 'DejaVuSans.ttf'
 WAR_FAMILY_PANEL_CHANNEL_ID = int(os.getenv('WAR_FAMILY_PANEL_CHANNEL_ID', '1531246363009089637'))
 WAR_FAMILY_PANEL_FILE = Path(__file__).with_name('war-family-panel.json')
 WAR_FAMILIES = [(372, 'Main'), (10701, 'Scammers'), (123853, 'A M O R A L'), (112217, 'Clan Soprano'), (147788, 'MODERN')]
+WAR_POINTS_CHANNEL_ID = int(os.getenv('WAR_POINTS_CHANNEL_ID', '1538679810094538914'))
+WAR_POINTS_STATE_FILE = Path(__file__).with_name('war-points-state.json')
+WAR_POINTS_PANEL_TITLE = '📌 Точки у семей'
+WAR_POINTS_SCAN_MAX_PAGES = int(os.getenv('WAR_POINTS_SCAN_MAX_PAGES', '20'))
+WAR_POINTS_SCAN_STOP_EMPTY = int(os.getenv('WAR_POINTS_SCAN_STOP_EMPTY', '3'))
+WAR_POINTS_DEEP_RESCAN_SECONDS = int(os.getenv('WAR_POINTS_DEEP_RESCAN_SECONDS', '3600'))
 
 NVIDIA_API_KEY = os.getenv('NVIDIA_API_KEY')
 NVIDIA_API_URL = 'https://integrate.api.nvidia.com/v1/chat/completions'
@@ -2356,6 +2362,7 @@ async def on_ready() -> None:
     asyncio.create_task(war_monitor())
     asyncio.create_task(war_stats_monitor())
     asyncio.create_task(family_panel_monitor())
+    asyncio.create_task(points_panel_monitor())
     await asyncio.sleep(2)
     print('All on_ready tasks launched')
     try:
@@ -3614,6 +3621,176 @@ async def family_panel_monitor() -> None:
         await asyncio.sleep(WAR_POLL_SECONDS)
 
 
+def _war_points_normalize(name: str) -> str:
+    return ' '.join(str(name or '').split())
+
+
+def _war_points_is_our_family(name: str) -> bool:
+    return _war_points_normalize(name) == _war_points_normalize(WAR_ORG_NAME)
+
+
+async def _war_points_fetch_page(session, base: str, offset: int) -> list:
+    url = f'{base}/events?limit=100&offset={offset}'
+    async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+        if resp.status != 200:
+            raise RuntimeError(f'HTTP {resp.status}')
+        data = await resp.json()
+        return data if isinstance(data, list) else []
+
+
+def _war_points_update_owners(owners: dict, events: list) -> list:
+    changed = []
+    for e in events or []:
+        if e.get('serverId') != WAR_SERVER_ID:
+            continue
+        point = e.get('pointName')
+        winner = _war_points_normalize(e.get('winnerName'))
+        ended = e.get('endedAt') or ''
+        if not point or not winner or not ended:
+            continue
+        prev = owners.get(point) or {}
+        prev_owner = prev.get('owner')
+        prev_ended = prev.get('endedAt') or ''
+        if prev_owner == winner and prev_ended == ended:
+            continue
+        if prev_ended and prev_ended > ended:
+            continue
+        owners[point] = {'owner': winner, 'endedAt': ended, 'eventId': e.get('eventId')}
+        changed.append((point, winner, prev_owner))
+    return changed
+
+
+async def _war_points_deep_scan(session, base: str) -> dict:
+    owners = {}
+    empty_pages = 0
+    for page in range(WAR_POINTS_SCAN_MAX_PAGES):
+        events = await _war_points_fetch_page(session, base, page * 100)
+        if not events:
+            break
+        before = len(owners)
+        _war_points_update_owners(owners, events)
+        new_points = len(owners) > before
+        if not new_points:
+            empty_pages += 1
+            if empty_pages >= WAR_POINTS_SCAN_STOP_EMPTY:
+                break
+        else:
+            empty_pages = 0
+        await asyncio.sleep(0.4)
+    return owners
+
+
+def build_points_panel_embed(owners: dict) -> discord.Embed:
+    by_family = {}
+    for point, info in (owners or {}).items():
+        owner = _war_points_normalize(info.get('owner'))
+        if _war_points_is_our_family(owner):
+            continue
+        by_family.setdefault(owner, []).append(point)
+    embed = discord.Embed(
+        title=WAR_POINTS_PANEL_TITLE,
+        color=0xF59E0B,
+        timestamp=discord.utils.utcnow(),
+    )
+    if not by_family:
+        embed.add_field(name='Ни у кого нет точек', value='Пока ни у одной семьи нет захваченных точек.', inline=False)
+        return embed
+    for owner, points in sorted(by_family.items(), key=lambda kv: (-len(kv[1]), kv[0])):
+        points_text = ', '.join(sorted(points))
+        embed.add_field(name=f'{owner} — {len(points)}', value=points_text, inline=False)
+    return embed
+
+
+async def points_panel_monitor() -> None:
+    print(f'[POINTS] Монитор точек запущен: канал {WAR_POINTS_CHANNEL_ID}')
+    base = WAR_API_URL.rsplit('/', 1)[0]
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Accept': 'application/json'}
+    state = read_json(WAR_POINTS_STATE_FILE) or {}
+    panel_id = state.get('message_id')
+    owners = state.get('owners') or {}
+    deep_scan_start = 0.0
+    while True:
+        try:
+            now = _war_now_msk().timestamp()
+            async with aiohttp.ClientSession(headers=headers) as session:
+                if not owners or (now - deep_scan_start) >= WAR_POINTS_DEEP_RESCAN_SECONDS:
+                    owners = await _war_points_deep_scan(session, base)
+                    deep_scan_start = now
+                    write_json(WAR_POINTS_STATE_FILE, {'message_id': panel_id, 'owners': owners})
+                    print(f'[POINTS] Глубокий скан: {len(owners)} точек')
+                changed = []
+                for page in range(2):
+                    events = await _war_points_fetch_page(session, base, page * 100)
+                    if not events:
+                        break
+                    changed += _war_points_update_owners(owners, events)
+                    await asyncio.sleep(0.3)
+            if changed:
+                write_json(WAR_POINTS_STATE_FILE, {'message_id': panel_id, 'owners': owners})
+            alert_channel = bot.get_channel(WAR_POINTS_CHANNEL_ID)
+            if not isinstance(alert_channel, discord.TextChannel):
+                try:
+                    alert_channel = await bot.fetch_channel(WAR_POINTS_CHANNEL_ID)
+                except Exception:
+                    alert_channel = None
+            if isinstance(alert_channel, discord.TextChannel):
+                for point, winner, prev_owner in changed:
+                    if _war_points_is_our_family(winner):
+                        continue
+                    new_capture = not prev_owner or _war_points_normalize(prev_owner) != winner
+                    if new_capture:
+                        try:
+                            await alert_channel.send(f'⚔️ Семья **{winner}** захватила точку **{point}**!')
+                            print(f'[POINTS] Захват: {winner} -> {point}')
+                        except Exception as exc:
+                            print(f'[POINTS] Ошибка отправки алерта: {exc}')
+
+            embed = build_points_panel_embed(owners)
+            channel = bot.get_channel(WAR_POINTS_CHANNEL_ID)
+            if not isinstance(channel, discord.TextChannel):
+                try:
+                    channel = await bot.fetch_channel(WAR_POINTS_CHANNEL_ID)
+                except Exception:
+                    channel = None
+            if not isinstance(channel, discord.TextChannel):
+                print(f'[POINTS] Канал {WAR_POINTS_CHANNEL_ID} не найден')
+                await asyncio.sleep(WAR_POLL_SECONDS)
+                continue
+            message = None
+            if panel_id:
+                try:
+                    message = await channel.fetch_message(panel_id)
+                except Exception:
+                    message = None
+            duplicates = []
+            if message is None:
+                async for msg in channel.history(limit=200):
+                    if msg.author.id == bot.user.id and msg.embeds and msg.embeds[0].title == WAR_POINTS_PANEL_TITLE:
+                        if message is None:
+                            message = msg
+                            panel_id = msg.id
+                            write_json(WAR_POINTS_STATE_FILE, {'message_id': msg.id, 'owners': owners})
+                            print(f'[POINTS] Найдена существующая панель: {msg.id}')
+                        else:
+                            duplicates.append(msg)
+                for dup in duplicates:
+                    try:
+                        await dup.delete()
+                        print(f'[POINTS] Удалён дубликат панели: {dup.id}')
+                    except Exception as exc:
+                        print(f'[POINTS] Ошибка удаления дубликата {dup.id}: {exc}')
+            if message is not None:
+                await message.edit(embed=embed)
+            else:
+                message = await channel.send(embed=embed)
+                write_json(WAR_POINTS_STATE_FILE, {'message_id': message.id, 'owners': owners})
+                panel_id = message.id
+                print(f'[POINTS] Панель создана: {message.id}')
+        except Exception as exc:
+            print(f'[POINTS] Ошибка опроса: {exc}')
+        await asyncio.sleep(WAR_POLL_SECONDS)
+
+
 def _war_stats_font(size: int):
     from PIL import ImageFont
     for path in (WAR_STATS_FONT_FILE, Path('C:/Windows/Fonts/arial.ttf')):
@@ -3981,6 +4158,27 @@ async def war_test_family_panel_cmd(interaction: discord.Interaction) -> None:
             channel = await bot.fetch_channel(WAR_FAMILY_PANEL_CHANNEL_ID)
         await channel.send(embed=embed)
         await interaction.followup.send('✅ Панель кд отправлена.', ephemeral=True)
+    except Exception as exc:
+        await interaction.followup.send(f'Ошибка: {exc}', ephemeral=True)
+
+
+@bot.tree.command(name='war_test_points_panel', description='Тест: отправить панель точек в канал точек')
+async def war_test_points_panel_cmd(interaction: discord.Interaction) -> None:
+    if not isinstance(interaction.user, discord.Member) or not any(role.id == VZP_CREATOR_ROLE_ID for role in interaction.user.roles):
+        await interaction.response.send_message('Нужна роль для теста.', ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+    try:
+        base = WAR_API_URL.rsplit('/', 1)[0]
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Accept': 'application/json'}
+        async with aiohttp.ClientSession(headers=headers) as session:
+            owners = await _war_points_deep_scan(session, base)
+        embed = build_points_panel_embed(owners)
+        channel = bot.get_channel(WAR_POINTS_CHANNEL_ID)
+        if channel is None:
+            channel = await bot.fetch_channel(WAR_POINTS_CHANNEL_ID)
+        await channel.send(embed=embed)
+        await interaction.followup.send(f'✅ Панель точек отправлена ({len(owners)} точек).', ephemeral=True)
     except Exception as exc:
         await interaction.followup.send(f'Ошибка: {exc}', ephemeral=True)
 

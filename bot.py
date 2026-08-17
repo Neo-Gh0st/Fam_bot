@@ -3753,9 +3753,7 @@ def build_points_panel_embed(owners: dict, fam_histories: dict | None = None) ->
                 def_pt = _war_family_point(last_def) if last_def else 'не били'
                 cd_lines.append(f'🔴 Атака: {atk_pt} · {atk_cd}')
                 cd_lines.append(f'🔵 Деф: {def_pt} · {def_cd}')
-        value = str(len(points))
-        if cd_lines:
-            value += '\n' + '\n'.join(cd_lines)
+        value = '\n'.join(cd_lines) if cd_lines else 'нет данных'
         embed.add_field(name=f'{owner} — {len(points)}', value=value, inline=False)
     return embed
 
@@ -3786,14 +3784,13 @@ async def points_panel_monitor() -> None:
                     await asyncio.sleep(0.3)
                 fam_histories = {}
                 if owners:
-                    name_to_id = {_war_points_normalize(name): fid for fid, name in WAR_FAMILIES}
-                    unknown = set()
+                    owners_by_name = {}
                     for info in owners.values():
                         owner = _war_points_normalize(info.get('owner'))
-                        if not owner:
-                            continue
-                        if owner not in name_to_id:
-                            unknown.add(owner)
+                        if owner:
+                            owners_by_name[owner] = True
+                    name_to_id = {_war_points_normalize(name): fid for fid, name in WAR_FAMILIES}
+                    unknown = set(owners_by_name.keys()) - set(name_to_id.keys())
                     if unknown:
                         try:
                             async with session.get(f'{base}/stats/organizations?server_id={WAR_SERVER_ID}', timeout=aiohttp.ClientTimeout(total=15)) as resp:
@@ -3802,15 +3799,21 @@ async def points_panel_monitor() -> None:
                                         oname = _war_points_normalize(org.get('name'))
                                         if oname in unknown:
                                             name_to_id[oname] = org.get('id')
+                                            unknown.discard(oname)
                         except Exception:
                             pass
-                    for name, fid in name_to_id.items():
+                    for name in owners_by_name:
+                        fid = name_to_id.get(name)
+                        if not fid:
+                            continue
                         try:
                             async with session.get(f'{base}/stats/organizations/{fid}/history', timeout=aiohttp.ClientTimeout(total=15)) as resp:
                                 if resp.status == 200:
                                     fam_histories[name] = await resp.json()
                         except Exception:
                             pass
+                    if unknown:
+                        print(f'[POINTS] Не найдены ID для семей: {unknown}')
                 embed = build_points_panel_embed(owners, fam_histories)
             if changed:
                 write_json(WAR_POINTS_STATE_FILE, {'message_id': panel_id, 'owners': owners})

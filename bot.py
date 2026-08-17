@@ -3579,84 +3579,7 @@ def _war_stats_full(value: str) -> str:
     return dt.strftime('%d.%m в %H:%M')
 
 
-def build_family_panel_embed(fam_histories: dict) -> discord.Embed:
-    embed = discord.Embed(
-        title='⚔️ Кд на атаку по семьям',
-        color=0x38BDF8,
-        timestamp=discord.utils.utcnow(),
-    )
-    for idx, (fam_id, fam_name) in enumerate(WAR_FAMILIES, start=1):
-        history = fam_histories.get(fam_id) or []
-        last_attack = _war_family_last(history, 'ATK')
-        last_def = _war_family_last(history, 'DEF')
-        lines = [
-            f'🔴 Атака: {_war_family_point(last_attack)} · {_war_family_cd_text(last_attack.get("date"), "ATK") if last_attack else "—"}',
-            f'🔵 Деф:   {_war_family_point(last_def)} · {_war_family_cd_text(last_def.get("date"), "DEF") if last_def else "—"}',
-        ]
-        embed.add_field(name=f'{idx}. {fam_name}', value='\n'.join(lines), inline=False)
-    return embed
 
-
-async def family_panel_monitor() -> None:
-    print(f'[FAMPANEL] Монитор запущен: канал {WAR_FAMILY_PANEL_CHANNEL_ID}')
-    base = WAR_API_URL.rsplit('/', 1)[0]
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Accept': 'application/json'}
-    panel_id = read_json(WAR_FAMILY_PANEL_FILE).get('message_id') if isinstance(read_json(WAR_FAMILY_PANEL_FILE), dict) else None
-    while True:
-        try:
-            fam_histories = {}
-            async with aiohttp.ClientSession(headers=headers) as session:
-                for fam_id, _fam_name in WAR_FAMILIES:
-                    try:
-                        async with session.get(f'{base}/stats/organizations/{fam_id}/history', timeout=aiohttp.ClientTimeout(total=15)) as resp:
-                            if resp.status == 200:
-                                fam_histories[fam_id] = await resp.json()
-                    except Exception as exc:
-                        print(f'[FAMPANEL] Ошибка истории семьи {fam_id}: {exc}')
-            embed = build_family_panel_embed(fam_histories)
-            channel = bot.get_channel(WAR_FAMILY_PANEL_CHANNEL_ID)
-            if not isinstance(channel, discord.TextChannel):
-                try:
-                    channel = await bot.fetch_channel(WAR_FAMILY_PANEL_CHANNEL_ID)
-                except Exception:
-                    channel = None
-            if not isinstance(channel, discord.TextChannel):
-                print(f'[FAMPANEL] Канал {WAR_FAMILY_PANEL_CHANNEL_ID} не найден')
-                await asyncio.sleep(WAR_POLL_SECONDS)
-                continue
-            message = None
-            if panel_id:
-                try:
-                    message = await channel.fetch_message(panel_id)
-                except Exception:
-                    message = None
-            duplicates = []
-            if message is None:
-                async for msg in channel.history(limit=200):
-                    if msg.author.id == bot.user.id and msg.embeds and msg.embeds[0].title == '⚔️ Кд на атаку по семьям':
-                        if message is None:
-                            message = msg
-                            panel_id = msg.id
-                            write_json(WAR_FAMILY_PANEL_FILE, {'message_id': msg.id})
-                            print(f'[FAMPANEL] Найдена существующая панель: {msg.id}')
-                        else:
-                            duplicates.append(msg)
-                for dup in duplicates:
-                    try:
-                        await dup.delete()
-                        print(f'[FAMPANEL] Удалён дубликат панели: {dup.id}')
-                    except Exception as exc:
-                        print(f'[FAMPANEL] Ошибка удаления дубликата {dup.id}: {exc}')
-            if message is not None:
-                await message.edit(embed=embed)
-            else:
-                message = await channel.send(embed=embed)
-                write_json(WAR_FAMILY_PANEL_FILE, {'message_id': message.id})
-                panel_id = message.id
-                print(f'[FAMPANEL] Панель создана: {message.id}')
-        except Exception as exc:
-            print(f'[FAMPANEL] Ошибка опроса: {exc}')
-        await asyncio.sleep(WAR_POLL_SECONDS)
 
 
 def _war_points_normalize(name: str) -> str:
@@ -4225,32 +4148,6 @@ async def war_test_stats_cmd(interaction: discord.Interaction) -> None:
         await interaction.followup.send(f'Ошибка: {exc}', ephemeral=True)
 
 
-@bot.tree.command(name='war_test_family_panel', description='Тест: отправить панель кд по семьям в канал панели')
-async def war_test_family_panel_cmd(interaction: discord.Interaction) -> None:
-    if not isinstance(interaction.user, discord.Member) or not any(role.id == VZP_CREATOR_ROLE_ID for role in interaction.user.roles):
-        await interaction.response.send_message('Нужна роль для теста.', ephemeral=True)
-        return
-    await interaction.response.defer(ephemeral=True)
-    try:
-        base = WAR_API_URL.rsplit('/', 1)[0]
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Accept': 'application/json'}
-        fam_histories = {}
-        async with aiohttp.ClientSession(headers=headers) as session:
-            for fam_id, _fam_name in WAR_FAMILIES:
-                try:
-                    async with session.get(f'{base}/stats/organizations/{fam_id}/history', timeout=aiohttp.ClientTimeout(total=15)) as resp:
-                        if resp.status == 200:
-                            fam_histories[fam_id] = await resp.json()
-                except Exception:
-                    pass
-        embed = build_family_panel_embed(fam_histories)
-        channel = bot.get_channel(WAR_FAMILY_PANEL_CHANNEL_ID)
-        if channel is None:
-            channel = await bot.fetch_channel(WAR_FAMILY_PANEL_CHANNEL_ID)
-        await channel.send(embed=embed)
-        await interaction.followup.send('✅ Панель кд отправлена.', ephemeral=True)
-    except Exception as exc:
-        await interaction.followup.send(f'Ошибка: {exc}', ephemeral=True)
 
 
 @bot.tree.command(name='war_test_points_panel', description='Тест: отправить панель точек в канал точек')

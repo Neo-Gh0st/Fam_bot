@@ -3741,7 +3741,6 @@ def build_points_panel_embed(owners: dict, fam_histories: dict | None = None) ->
         embed.add_field(name='Ни у кого нет точек', value='Пока ни у одной семьи нет захваченных точек.', inline=False)
         return embed
     for owner, points in sorted(by_family.items(), key=lambda kv: (-len(kv[1]), kv[0])):
-        points_text = ', '.join(sorted(points))
         cd_lines = []
         if fam_histories:
             history = fam_histories.get(owner) or []
@@ -3754,7 +3753,7 @@ def build_points_panel_embed(owners: dict, fam_histories: dict | None = None) ->
                 def_pt = _war_family_point(last_def) if last_def else 'не били'
                 cd_lines.append(f'🔴 Атака: {atk_pt} · {atk_cd}')
                 cd_lines.append(f'🔵 Деф: {def_pt} · {def_cd}')
-        value = points_text
+        value = str(len(points))
         if cd_lines:
             value += '\n' + '\n'.join(cd_lines)
         embed.add_field(name=f'{owner} — {len(points)}', value=value, inline=False)
@@ -3787,7 +3786,7 @@ async def points_panel_monitor() -> None:
                     await asyncio.sleep(0.3)
                 fam_histories = {}
                 if owners:
-                    name_to_id = {name: fid for fid, name in WAR_FAMILIES}
+                    name_to_id = {_war_points_normalize(name): fid for fid, name in WAR_FAMILIES}
                     unknown = set()
                     for info in owners.values():
                         owner = _war_points_normalize(info.get('owner'))

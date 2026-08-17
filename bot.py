@@ -3679,7 +3679,7 @@ async def _war_points_fetch_page(session, base: str, offset: int) -> list:
 
 def _war_points_update_owners(owners: dict, events: list) -> list:
     changed = []
-    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    now_iso = datetime.now(timezone.utc).isoformat()
     for e in events or []:
         if e.get('serverId') != WAR_SERVER_ID:
             continue

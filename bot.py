@@ -126,7 +126,7 @@ WAR_FAMILY_PANEL_FILE = Path(__file__).with_name('war-family-panel.json')
 WAR_FAMILIES = [(4, 'ATF'), (37, 'BEIFONG'), (19456, 'SANTANA'), (55686, '8mile'), (85, 'Psychodelic'), (372, 'Main'), (10701, 'Scammers'), (123853, 'A M O R A L'), (112217, 'Clan Soprano'), (147788, 'MODERN')]
 WAR_POINTS_CHANNEL_ID = int(os.getenv('WAR_POINTS_CHANNEL_ID', '1538679810094538914'))
 WAR_POINTS_STATE_FILE = Path(__file__).with_name('war-points-state.json')
-WAR_POINTS_PANEL_TITLE = '📌 Точки у семей'
+WAR_POINTS_PANEL_TITLE = '📌 Война за точки'
 WAR_POINTS_SCAN_MAX_PAGES = int(os.getenv('WAR_POINTS_SCAN_MAX_PAGES', '20'))
 WAR_POINTS_SCAN_STOP_EMPTY = int(os.getenv('WAR_POINTS_SCAN_STOP_EMPTY', '3'))
 WAR_POINTS_DEEP_RESCAN_SECONDS = int(os.getenv('WAR_POINTS_DEEP_RESCAN_SECONDS', '3600'))
@@ -3662,7 +3662,12 @@ def build_points_panel_embed(owners: dict, fam_histories: dict | None = None) ->
     if not by_family:
         embed.add_field(name='Ни у кого нет точек', value='Пока ни у одной семьи нет захваченных точек.', inline=False)
         return embed
-    for owner, points in sorted(by_family.items(), key=lambda kv: (-len(kv[1]), kv[0])):
+    total = sum(len(pts) for pts in by_family.values())
+    embed.description = f'**{total}** точек за **{len(by_family)}** семьями'
+    rank_emojis = ['🥇', '🥈', '🥉']
+    sorted_families = sorted(by_family.items(), key=lambda kv: (-len(kv[1]), kv[0]))
+    for idx, (owner, points) in enumerate(sorted_families):
+        emoji = rank_emojis[idx] if idx < 3 else f'**{idx + 1}.**'
         cd_lines = []
         if fam_histories:
             history = fam_histories.get(owner) or []
@@ -3673,10 +3678,13 @@ def build_points_panel_embed(owners: dict, fam_histories: dict | None = None) ->
                 def_cd = _war_family_cd_text(last_def.get('date'), 'DEF') if last_def else '—'
                 atk_pt = _war_family_point(last_atk) if last_atk else 'не били'
                 def_pt = _war_family_point(last_def) if last_def else 'не били'
-                cd_lines.append(f'🔴 Атака: {atk_pt} · {atk_cd}')
-                cd_lines.append(f'🔵 Деф: {def_pt} · {def_cd}')
-        value = '\n'.join(cd_lines) if cd_lines else 'нет данных'
-        embed.add_field(name=f'{owner} — {len(points)}', value=value, inline=False)
+                cd_lines.append(f'🔴 **Атака:** {atk_pt} · {atk_cd}')
+                cd_lines.append(f'🔵 **Деф:** {def_pt} · {def_cd}')
+        if cd_lines:
+            value = '\n'.join(cd_lines)
+        else:
+            value = f'├ {", ".join(sorted(points))}'
+        embed.add_field(name=f'{emoji} {owner} — {len(points)}', value=value, inline=False)
     return embed
 
 

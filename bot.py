@@ -3664,10 +3664,8 @@ def build_points_panel_embed(owners: dict, fam_histories: dict | None = None) ->
         return embed
     total = sum(len(pts) for pts in by_family.values())
     embed.description = f'**{total}** точек за **{len(by_family)}** семьями'
-    rank_emojis = ['🥇', '🥈', '🥉']
     sorted_families = sorted(by_family.items(), key=lambda kv: (-len(kv[1]), kv[0]))
     for idx, (owner, points) in enumerate(sorted_families):
-        emoji = rank_emojis[idx] if idx < 3 else f'**{idx + 1}.**'
         cd_lines = []
         if fam_histories:
             history = fam_histories.get(owner) or []
@@ -3684,7 +3682,7 @@ def build_points_panel_embed(owners: dict, fam_histories: dict | None = None) ->
             value = '\n'.join(cd_lines)
         else:
             value = f'├ {", ".join(sorted(points))}'
-        embed.add_field(name=f'{emoji} {owner} — {len(points)}', value=value, inline=False)
+        embed.add_field(name=f'{idx + 1}. {owner} — {len(points)}', value=value, inline=False)
     return embed
 
 

@@ -123,7 +123,7 @@ WAR_STATS_SENT_FILE = Path(__file__).with_name('war-stats-sent.json')
 WAR_STATS_FONT_FILE = Path(__file__).parent / 'assets' / 'DejaVuSans.ttf'
 WAR_FAMILY_PANEL_CHANNEL_ID = int(os.getenv('WAR_FAMILY_PANEL_CHANNEL_ID', '1531246363009089637'))
 WAR_FAMILY_PANEL_FILE = Path(__file__).with_name('war-family-panel.json')
-WAR_FAMILIES = [(4, 'ATF'), (13, 'BEIFONG'), (26202146, 'SANTANA'), (127757282, '8mile'), (20, 'Psychodelic'), (29, 'Main'), (8084801, 'Scammers'), (473194513, 'A M O R A L'), (385594513, 'Clan Soprano'), (674722099, 'MODERN')]
+WAR_FAMILIES = [(4, 'ATF'), (37, 'BEIFONG'), (19456, 'SANTANA'), (55686, '8mile'), (85, 'Psychodelic'), (372, 'Main'), (10701, 'Scammers'), (123853, 'A M O R A L'), (112217, 'Clan Soprano'), (147788, 'MODERN')]
 WAR_POINTS_CHANNEL_ID = int(os.getenv('WAR_POINTS_CHANNEL_ID', '1538679810094538914'))
 WAR_POINTS_STATE_FILE = Path(__file__).with_name('war-points-state.json')
 WAR_POINTS_PANEL_TITLE = '📌 Точки у семей'
@@ -3798,7 +3798,7 @@ async def points_panel_monitor() -> None:
                                     for org in await resp.json():
                                         oname = _war_points_normalize(org.get('name'))
                                         if oname in unknown:
-                                            name_to_id[oname] = org.get('id')
+                                            name_to_id[oname] = org.get('externalId')
                                             unknown.discard(oname)
                         except Exception:
                             pass

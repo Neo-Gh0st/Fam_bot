@@ -2400,7 +2400,6 @@ async def on_ready() -> None:
     asyncio.create_task(refresh_blacklist_safely())
     asyncio.create_task(war_monitor())
     asyncio.create_task(war_stats_monitor())
-    asyncio.create_task(family_panel_monitor())
     asyncio.create_task(points_panel_monitor())
     await asyncio.sleep(2)
     print('All on_ready tasks launched')
@@ -3766,6 +3765,7 @@ async def points_panel_monitor() -> None:
     panel_id = state.get('message_id')
     owners = state.get('owners') or {p: {'owner': o} for p, o in WAR_POINTS_SEED.items()}
     deep_scan_start = time.monotonic()
+    first_run = True
     while True:
         try:
             now = time.monotonic()
@@ -3823,7 +3823,7 @@ async def points_panel_monitor() -> None:
                     alert_channel = await bot.fetch_channel(WAR_POINTS_CHANNEL_ID)
                 except Exception:
                     alert_channel = None
-            if isinstance(alert_channel, discord.TextChannel):
+            if isinstance(alert_channel, discord.TextChannel) and not first_run:
                 for point, winner, prev_owner in changed:
                     if _war_points_is_our_family(winner):
                         continue
@@ -3835,6 +3835,7 @@ async def points_panel_monitor() -> None:
                             print(f'[POINTS] Захват: {winner} -> {point} (у {defender})')
                         except Exception as exc:
                             print(f'[POINTS] Ошибка отправки алерта: {exc}')
+            first_run = False
 
             channel = bot.get_channel(WAR_POINTS_CHANNEL_ID)
             if not isinstance(channel, discord.TextChannel):

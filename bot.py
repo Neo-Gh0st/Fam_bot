@@ -85,7 +85,11 @@ INVITE_CHANNEL_ID = int(os.getenv('INVITE_CHANNEL_ID', str(TARGET_CHANNEL_ID)))
 RECRUIT_REPORT_CHANNEL_ID = int(os.getenv('RECRUIT_REPORT_CHANNEL_ID', '1531246362274955371'))
 BIRTHDAY_BOARD_CHANNEL_ID = int(os.getenv('BIRTHDAY_BOARD_CHANNEL_ID', '0'))
 BIRTHDAY_GREETING_CHANNEL_ID = int(os.getenv('BIRTHDAY_GREETING_CHANNEL_ID', '0'))
-LOG_CHANNEL_ID = int(os.getenv('LOG_CHANNEL_ID', '0'))
+LOG_CHANNEL_ID = int(os.getenv('LOG_CHANNEL_ID', '1531771075300429874'))
+LOG_JOIN_LEAVE_ID = int(os.getenv('LOG_JOIN_LEAVE_ID', '1538993292216373352'))
+LOG_VOICE_ID = int(os.getenv('LOG_VOICE_ID', '1538993341419487362'))
+LOG_ROLES_ID = int(os.getenv('LOG_ROLES_ID', '1538993832136540300'))
+LOG_MESSAGES_ID = int(os.getenv('LOG_MESSAGES_ID', '1538993445165732000'))
 WELCOME_CHANNEL_ID = int(os.getenv('WELCOME_CHANNEL_ID', '1342073128112623666'))
 
 APP_CREATE_CHANNEL_ID = int(os.getenv('APP_CREATE_CHANNEL_ID', '0'))
@@ -1700,6 +1704,7 @@ async def send_log(
     user: discord.Member | discord.User | None = None,
     fields: list[tuple[str, str, bool]] | None = None,
     thumbnail: str | None = None,
+    channel_id: int | None = None,
 ) -> None:
     """
     Компактный лог в едином стиле.
@@ -1707,13 +1712,15 @@ async def send_log(
     - fields:    список (название, значение, inline) — например Участник / Канал
     - user:      участник (аватар сбоку + ID в футере)
     - thumbnail: маленькая картинка сбоку
+    - channel_id: канал для лога (fallback → LOG_CHANNEL_ID)
     """
-    if not LOG_CHANNEL_ID:
+    target = channel_id or LOG_CHANNEL_ID
+    if not target:
         return
     try:
-        channel = bot.get_channel(LOG_CHANNEL_ID)
+        channel = bot.get_channel(target)
         if channel is None:
-            channel = await bot.fetch_channel(LOG_CHANNEL_ID)
+            channel = await bot.fetch_channel(target)
         if not isinstance(channel, discord.TextChannel):
             return
 
@@ -2332,7 +2339,7 @@ async def track_member_invite(member: discord.Member) -> None:
                 ('Участник', _log_user_field(member), True),
                 ('Источник', '**не определён**', True),
             ],
-            color=0xA855F7, user=member,
+            color=0xA855F7, user=member, channel_id=LOG_JOIN_LEAVE_ID,
         ))
         return
 
@@ -2356,7 +2363,7 @@ async def track_member_invite(member: discord.Member) -> None:
                 ('Пригласил', recruiter_name, True),
                 ('Код ссылки', f'`{used_code}`', False),
             ],
-            color=0x22C55E, user=member,
+            color=0x22C55E, user=member, channel_id=LOG_JOIN_LEAVE_ID,
         ))
     else:
         asyncio.create_task(send_log(
@@ -2365,7 +2372,7 @@ async def track_member_invite(member: discord.Member) -> None:
                 ('Участник', _log_user_field(member), True),
                 ('Ссылка', f'`{used_code}` (без рекрута)', True),
             ],
-            color=0xA855F7, user=member,
+            color=0xA855F7, user=member, channel_id=LOG_JOIN_LEAVE_ID,
         ))
 
     await refresh_recruit_board_safely()
@@ -2431,7 +2438,7 @@ async def on_member_join(member: discord.Member) -> None:
     asyncio.create_task(send_log(
         '📥 Участник вошёл',
         fields=fields,
-        color=0x00FF00, user=member,
+        color=0x00FF00, user=member, channel_id=LOG_JOIN_LEAVE_ID,
     ))
 
 
@@ -2593,7 +2600,7 @@ async def on_member_remove(member: discord.Member) -> None:
             ('Роли', role_list, False),
             ('Участников', str(member.guild.member_count), True),
         ],
-        color=0xFF6600, user=member,
+        color=0xFF6600, user=member, channel_id=LOG_JOIN_LEAVE_ID,
     ))
 
 
@@ -2616,7 +2623,7 @@ async def on_voice_state_update(
                 ('Участник', _log_user_field(member), True),
                 ('Канал', _log_channel_field(after.channel), True),
             ],
-            color=0x22C55E, user=member,
+            color=0x22C55E, user=member, channel_id=LOG_VOICE_ID,
         ))
     elif before.channel is not None and after.channel is None:
         # Вышел из войса
@@ -2626,7 +2633,7 @@ async def on_voice_state_update(
                 ('Участник', _log_user_field(member), True),
                 ('Канал', _log_channel_field(before.channel), True),
             ],
-            color=0xEF4444, user=member,
+            color=0xEF4444, user=member, channel_id=LOG_VOICE_ID,
         ))
     elif before.channel is not None and after.channel is not None and before.channel.id != after.channel.id:
         # Перешёл / перекинули в другой войс
@@ -2637,7 +2644,7 @@ async def on_voice_state_update(
                 ('Откуда', _log_channel_field(before.channel), True),
                 ('Куда', _log_channel_field(after.channel), True),
             ],
-            color=0xF59E0B, user=member,
+            color=0xF59E0B, user=member, channel_id=LOG_VOICE_ID,
         ))
 
 
@@ -2675,7 +2682,7 @@ async def on_message_delete(message: discord.Message) -> None:
     asyncio.create_task(send_log(
         '🗑️ Сообщение удалено',
         fields=fields,
-        color=0xEF4444, user=message.author,
+        color=0xEF4444, user=message.author, channel_id=LOG_MESSAGES_ID,
     ))
 
 @bot.event
@@ -2698,7 +2705,7 @@ async def on_message_edit(before: discord.Message, after: discord.Message) -> No
     asyncio.create_task(send_log(
         '✏️ Сообщение изменено',
         fields=fields,
-        color=0xF59E0B, user=after.author,
+        color=0xF59E0B, user=after.author, channel_id=LOG_MESSAGES_ID,
     ))
 
 
@@ -2757,7 +2764,7 @@ async def on_member_update(before: discord.Member, after: discord.Member) -> Non
     asyncio.create_task(send_log(
         '🏷️ Изменение ролей',
         fields=fields,
-        color=0x8B5CF6, user=after,
+        color=0x8B5CF6, user=after, channel_id=LOG_ROLES_ID,
     ))
 
 
@@ -2793,7 +2800,7 @@ async def on_member_ban(guild: discord.Guild, user: discord.User) -> None:
     asyncio.create_task(send_log(
         '🔨 Бан',
         fields=fields,
-        color=0xFF0000, user=user,
+        color=0xFF0000, user=user, channel_id=LOG_ROLES_ID,
     ))
 
 
@@ -2823,7 +2830,7 @@ async def on_member_unban(guild: discord.Guild, user: discord.User) -> None:
     asyncio.create_task(send_log(
         '✅ Разбан',
         fields=fields,
-        color=0x00FF00, user=user,
+        color=0x00FF00, user=user, channel_id=LOG_ROLES_ID,
     ))
 
 
@@ -3333,11 +3340,11 @@ async def check_raid(member: discord.Member) -> None:
                 ('Входов за секунд', f'**{RAID_THRESHOLD}+** за **{RAID_WINDOW}** сек', True),
                 ('Последний участник', _log_user_field(member), True),
             ],
-            color=0xFF0000, user=member,
+            color=0xFF0000, user=member, channel_id=LOG_JOIN_LEAVE_ID,
         ))
 
         # Пинг админов
-        admin_channel = guild.get_channel(LOG_CHANNEL_ID)
+        admin_channel = guild.get_channel(LOG_JOIN_LEAVE_ID)
         if admin_channel and isinstance(admin_channel, discord.TextChannel):
             try:
                 admins = [m for m in guild.members if m.guild_permissions.manage_guild and not m.bot]

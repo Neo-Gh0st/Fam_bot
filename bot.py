@@ -163,7 +163,7 @@ WAR_POINTS_SEED = {
     "Фуникулер": "8mile", "Центр досуга": "8mile",
     "Склад Alpha Post": "Psychodelic", "Склад PostOP": "Psychodelic",
     "Склад XERO GAS": "Psychodelic", "Кафе DUNE-O's": "Psychodelic",
-    "Vitreous": "Psychodelic", "Нефтехранилище": "Psychodelic",
+    "Vitreous": "Psychodelic",     "Нефтехранилище": "Main",
     "Frey Baker": "Psychodelic", "White Water AC": "Psychodelic",
     "Stoner Cement": "Psychodelic", "Pala Springs": "Psychodelic",
     "Willie's": "Psychodelic", "Станция дайверов": "Psychodelic",
@@ -172,7 +172,6 @@ WAR_POINTS_SEED = {
     "Свалка Rogers": "A M O R A L", "Heroin Chic": "A M O R A L",
     "Larry's Pork": "A M O R A L", "Locksmith": "A M O R A L",
     "ATOMIC": "A M O R A L", "Склад FRIDGIT": "A M O R A L", "Chico's": "A M O R A L",
-    "Склад LS Post": "Main",
 }
 
 NVIDIA_API_KEY = os.getenv('NVIDIA_API_KEY')

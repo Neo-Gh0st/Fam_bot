@@ -3753,7 +3753,7 @@ async def points_panel_monitor() -> None:
     state = read_json(WAR_POINTS_STATE_FILE) or {}
     panel_id = state.get('message_id')
     owners = state.get('owners') or {p: {'owner': o} for p, o in WAR_POINTS_SEED.items()}
-    deep_scan_start = 0.0
+    deep_scan_start = time.monotonic()
     while True:
         try:
             now = time.monotonic()

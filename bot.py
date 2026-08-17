@@ -3725,7 +3725,7 @@ async def _war_points_deep_scan(session, base: str, existing_owners: dict | None
     return owners
 
 
-def build_points_panel_embed(owners: dict) -> discord.Embed:
+def build_points_panel_embed(owners: dict, fam_histories: dict | None = None) -> discord.Embed:
     by_family = {}
     for point, info in (owners or {}).items():
         owner = _war_points_normalize(info.get('owner'))
@@ -3740,9 +3740,30 @@ def build_points_panel_embed(owners: dict) -> discord.Embed:
     if not by_family:
         embed.add_field(name='Ни у кого нет точек', value='Пока ни у одной семьи нет захваченных точек.', inline=False)
         return embed
+    fam_cd_names = {name: (fid, name) for fid, name in WAR_FAMILIES}
     for owner, points in sorted(by_family.items(), key=lambda kv: (-len(kv[1]), kv[0])):
         points_text = ', '.join(sorted(points))
-        embed.add_field(name=f'{owner} — {len(points)}', value=points_text, inline=False)
+        cd_lines = []
+        if fam_histories:
+            matched = None
+            for fid, fname in WAR_FAMILIES:
+                if _war_points_normalize(fname) == owner:
+                    matched = fid
+                    break
+            if matched:
+                history = fam_histories.get(matched) or []
+                last_atk = _war_family_last(history, 'ATK')
+                last_def = _war_family_last(history, 'DEF')
+                atk_cd = _war_family_cd_text(last_atk.get('date'), 'ATK') if last_atk else '—'
+                def_cd = _war_family_cd_text(last_def.get('date'), 'DEF') if last_def else '—'
+                atk_pt = _war_family_point(last_atk) if last_atk else 'не били'
+                def_pt = _war_family_point(last_def) if last_def else 'не били'
+                cd_lines.append(f'🔴 Атака: {atk_pt} · {atk_cd}')
+                cd_lines.append(f'🔵 Деф: {def_pt} · {def_cd}')
+        value = points_text
+        if cd_lines:
+            value += '\n' + '\n'.join(cd_lines)
+        embed.add_field(name=f'{owner} — {len(points)}', value=value, inline=False)
     return embed
 
 
@@ -3770,6 +3791,25 @@ async def points_panel_monitor() -> None:
                         break
                     changed += _war_points_update_owners(owners, events)
                     await asyncio.sleep(0.3)
+                fam_histories = {}
+                if owners:
+                    unique_fams = set()
+                    for info in owners.values():
+                        owner = _war_points_normalize(info.get('owner'))
+                        if not owner:
+                            continue
+                        for fid, fname in WAR_FAMILIES:
+                            if _war_points_normalize(fname) == owner:
+                                unique_fams.add(fid)
+                                break
+                    for fid in unique_fams:
+                        try:
+                            async with session.get(f'{base}/stats/organizations/{fid}/history', timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                                if resp.status == 200:
+                                    fam_histories[fid] = await resp.json()
+                        except Exception:
+                            pass
+                embed = build_points_panel_embed(owners, fam_histories)
             if changed:
                 write_json(WAR_POINTS_STATE_FILE, {'message_id': panel_id, 'owners': owners})
             alert_channel = bot.get_channel(WAR_POINTS_CHANNEL_ID)
@@ -3790,7 +3830,6 @@ async def points_panel_monitor() -> None:
                         except Exception as exc:
                             print(f'[POINTS] Ошибка отправки алерта: {exc}')
 
-            embed = build_points_panel_embed(owners)
             channel = bot.get_channel(WAR_POINTS_CHANNEL_ID)
             if not isinstance(channel, discord.TextChannel):
                 try:

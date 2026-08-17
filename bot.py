@@ -3703,7 +3703,7 @@ async def _war_points_deep_scan(session, base: str, existing_owners: dict | None
     if existing_owners:
         owners = dict(existing_owners)
     else:
-        owners = {p: {'owner': o} for p, o in WAR_POINTS_SEED.items()}
+        owners = {p: {'owner': o, 'endedAt': '9999-12-31T23:59:59.000Z'} for p, o in WAR_POINTS_SEED.items()}
     empty_pages = 0
     for page in range(WAR_POINTS_SCAN_MAX_PAGES):
         events = await _war_points_fetch_page(session, base, page * 100)

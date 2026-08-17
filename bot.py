@@ -131,6 +131,7 @@ WAR_FAMILIES = [(4, 'ATF'), (37, 'BEIFONG'), (19456, 'SANTANA'), (55686, '8mile'
 WAR_POINTS_CHANNEL_ID = int(os.getenv('WAR_POINTS_CHANNEL_ID', '1538679810094538914'))
 WAR_POINTS_STATE_FILE = Path(__file__).with_name('war-points-state.json')
 WAR_POINTS_PANEL_TITLE = '📌 Война за точки'
+WAR_POINTS_MAX_PER_FAMILY = 20
 WAR_POINTS_SCAN_MAX_PAGES = int(os.getenv('WAR_POINTS_SCAN_MAX_PAGES', '20'))
 WAR_POINTS_SCAN_STOP_EMPTY = int(os.getenv('WAR_POINTS_SCAN_STOP_EMPTY', '3'))
 WAR_POINTS_DEEP_RESCAN_SECONDS = int(os.getenv('WAR_POINTS_DEEP_RESCAN_SECONDS', '3600'))
@@ -3654,6 +3655,25 @@ async def _war_points_deep_scan(session, base: str, existing_owners: dict | None
     return owners
 
 
+def _war_points_cap_at_limit(owners: dict) -> list:
+    by_family: dict[str, list[str]] = {}
+    for point, info in (owners or {}).items():
+        owner = _war_points_normalize(info.get('owner'))
+        if not owner:
+            continue
+        by_family.setdefault(owner, []).append(point)
+    removed = []
+    for family, points in by_family.items():
+        if len(points) <= WAR_POINTS_MAX_PER_FAMILY:
+            continue
+        excess = points[WAR_POINTS_MAX_PER_FAMILY:]
+        for p in excess:
+            del owners[p]
+            removed.append((p, family))
+        print(f'[POINTS] {family}: обрезано {len(excess)} точек (лимит {WAR_POINTS_MAX_PER_FAMILY})')
+    return removed
+
+
 def build_points_panel_embed(owners: dict, fam_histories: dict | None = None) -> discord.Embed:
     by_family = {}
     for point, info in (owners or {}).items():
@@ -3718,6 +3738,10 @@ async def points_panel_monitor() -> None:
                         break
                     changed += _war_points_update_owners(owners, events)
                     await asyncio.sleep(0.3)
+                capped = _war_points_cap_at_limit(owners)
+                if capped:
+                    for p, fam in capped:
+                        changed.append((p, None, fam))
                 fam_histories = {}
                 if owners:
                     owners_by_name = {}
@@ -3761,6 +3785,14 @@ async def points_panel_monitor() -> None:
                     alert_channel = None
             if isinstance(alert_channel, discord.TextChannel) and not first_run:
                 for point, winner, prev_owner in changed:
+                    if not winner:
+                        if prev_owner:
+                            try:
+                                await alert_channel.send(f'♻️ Точка **{point}** сброшена в нейтрал (семья **{prev_owner}** имела максимум)')
+                                print(f'[POINTS] Сброс: {point} из {prev_owner} (макс)')
+                            except Exception as exc:
+                                print(f'[POINTS] Ошибка отправки алерта: {exc}')
+                        continue
                     if _war_points_is_our_family(winner):
                         continue
                     new_capture = not prev_owner or _war_points_normalize(prev_owner) != winner

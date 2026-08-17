@@ -3679,6 +3679,7 @@ async def _war_points_fetch_page(session, base: str, offset: int) -> list:
 
 def _war_points_update_owners(owners: dict, events: list) -> list:
     changed = []
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
     for e in events or []:
         if e.get('serverId') != WAR_SERVER_ID:
             continue
@@ -3694,6 +3695,8 @@ def _war_points_update_owners(owners: dict, events: list) -> list:
             continue
         if prev_ended and prev_ended > ended:
             continue
+        if not prev_ended and ended < now_iso[:10]:
+            continue
         owners[point] = {'owner': winner, 'endedAt': ended, 'eventId': e.get('eventId')}
         changed.append((point, winner, prev_owner))
     return changed
@@ -3703,7 +3706,7 @@ async def _war_points_deep_scan(session, base: str, existing_owners: dict | None
     if existing_owners:
         owners = dict(existing_owners)
     else:
-        owners = {p: {'owner': o, 'endedAt': '9999-12-31T23:59:59.000Z'} for p, o in WAR_POINTS_SEED.items()}
+        owners = {p: {'owner': o} for p, o in WAR_POINTS_SEED.items()}
     empty_pages = 0
     for page in range(WAR_POINTS_SCAN_MAX_PAGES):
         events = await _war_points_fetch_page(session, base, page * 100)

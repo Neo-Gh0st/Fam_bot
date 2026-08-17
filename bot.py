@@ -3740,18 +3740,12 @@ def build_points_panel_embed(owners: dict, fam_histories: dict | None = None) ->
     if not by_family:
         embed.add_field(name='Ни у кого нет точек', value='Пока ни у одной семьи нет захваченных точек.', inline=False)
         return embed
-    fam_cd_names = {name: (fid, name) for fid, name in WAR_FAMILIES}
     for owner, points in sorted(by_family.items(), key=lambda kv: (-len(kv[1]), kv[0])):
         points_text = ', '.join(sorted(points))
         cd_lines = []
         if fam_histories:
-            matched = None
-            for fid, fname in WAR_FAMILIES:
-                if _war_points_normalize(fname) == owner:
-                    matched = fid
-                    break
-            if matched:
-                history = fam_histories.get(matched) or []
+            history = fam_histories.get(owner) or []
+            if history:
                 last_atk = _war_family_last(history, 'ATK')
                 last_def = _war_family_last(history, 'DEF')
                 atk_cd = _war_family_cd_text(last_atk.get('date'), 'ATK') if last_atk else '—'
@@ -3793,20 +3787,29 @@ async def points_panel_monitor() -> None:
                     await asyncio.sleep(0.3)
                 fam_histories = {}
                 if owners:
-                    unique_fams = set()
+                    name_to_id = {name: fid for fid, name in WAR_FAMILIES}
+                    unknown = set()
                     for info in owners.values():
                         owner = _war_points_normalize(info.get('owner'))
                         if not owner:
                             continue
-                        for fid, fname in WAR_FAMILIES:
-                            if _war_points_normalize(fname) == owner:
-                                unique_fams.add(fid)
-                                break
-                    for fid in unique_fams:
+                        if owner not in name_to_id:
+                            unknown.add(owner)
+                    if unknown:
+                        try:
+                            async with session.get(f'{base}/stats/organizations?server_id={WAR_SERVER_ID}', timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                                if resp.status == 200:
+                                    for org in await resp.json():
+                                        oname = _war_points_normalize(org.get('name'))
+                                        if oname in unknown:
+                                            name_to_id[oname] = org.get('id')
+                        except Exception:
+                            pass
+                    for name, fid in name_to_id.items():
                         try:
                             async with session.get(f'{base}/stats/organizations/{fid}/history', timeout=aiohttp.ClientTimeout(total=15)) as resp:
                                 if resp.status == 200:
-                                    fam_histories[fid] = await resp.json()
+                                    fam_histories[name] = await resp.json()
                         except Exception:
                             pass
                 embed = build_points_panel_embed(owners, fam_histories)

@@ -165,7 +165,7 @@ WAR_POINTS_SEED = {
     "Амбар Хармони": "8mile", "Bayview Lodge": "8mile", "Ферма Грейпсид": "8mile",
     "Фуникулер": "8mile", "Центр досуга": "8mile",
     "Склад Alpha Post": "Psychodelic",     "Склад PostOP": "8mile",
-    "Склад XERO GAS": "Psychodelic", "Кафе DUNE-O's": "Psychodelic",
+    "Склад XERO GAS": "Psychodelic",     "Кафе DUNE-O's": "C E N T",
     "Vitreous": "Psychodelic",     "Нефтехранилище": "Main",
     "Frey Baker": "Psychodelic", "White Water AC": "Psychodelic",
     "Stoner Cement": "Psychodelic", "Pala Springs": "Psychodelic",
@@ -3705,7 +3705,7 @@ def _war_points_cap_at_limit(owners: dict) -> list:
     return removed
 
 
-def build_points_panel_embed(owners: dict, fam_histories: dict | None = None) -> discord.Embed:
+def build_points_panel_embed(owners: dict, fam_histories: dict | None = None, neutral: dict | None = None) -> discord.Embed:
     by_family = {}
     for point, info in (owners or {}).items():
         owner = _war_points_normalize(info.get('owner'))
@@ -3717,11 +3717,16 @@ def build_points_panel_embed(owners: dict, fam_histories: dict | None = None) ->
         color=0xF59E0B,
         timestamp=discord.utils.utcnow(),
     )
-    if not by_family:
+    if not by_family and not neutral:
         embed.add_field(name='Ни у кого нет точек', value='Пока ни у одной семьи нет захваченных точек.', inline=False)
         return embed
     total = sum(len(pts) for pts in by_family.values())
-    embed.description = f'**{total}** точек за **{len(by_family)}** семьями'
+    neutral_list = sorted((neutral or {}).keys())
+    total_with_neutral = total + len(neutral_list)
+    if neutral_list:
+        embed.description = f'**{total_with_neutral}** точек · **{total}** занято · **{len(neutral_list)}** без владельца'
+    else:
+        embed.description = f'**{total}** точек за **{len(by_family)}** семьями'
     sorted_families = sorted(by_family.items(), key=lambda kv: (-len(kv[1]), kv[0]))
     for idx, (owner, points) in enumerate(sorted_families):
         cd_lines = []
@@ -3741,6 +3746,8 @@ def build_points_panel_embed(owners: dict, fam_histories: dict | None = None) ->
         else:
             value = f'├ {", ".join(sorted(points))}'
         embed.add_field(name=f'{idx + 1}. {owner} — {len(points)}', value=value, inline=False)
+    if neutral_list:
+        embed.add_field(name=f'⚪ Без владельца — {len(neutral_list)}', value=f'├ {", ".join(neutral_list)}', inline=False)
     return embed
 
 
@@ -3751,6 +3758,7 @@ async def points_panel_monitor() -> None:
     state = read_json(WAR_POINTS_STATE_FILE) or {}
     panel_id = state.get('message_id')
     owners = state.get('owners') or {p: {'owner': o} for p, o in WAR_POINTS_SEED.items()}
+    neutral = state.get('neutral') or {}
     deep_scan_start = time.monotonic()
     first_run = True
     while True:
@@ -3760,7 +3768,7 @@ async def points_panel_monitor() -> None:
                 if not owners or (now - deep_scan_start) >= WAR_POINTS_DEEP_RESCAN_SECONDS:
                     owners = await _war_points_deep_scan(session, base, existing_owners=owners)
                     deep_scan_start = now
-                    write_json(WAR_POINTS_STATE_FILE, {'message_id': panel_id, 'owners': owners})
+                    write_json(WAR_POINTS_STATE_FILE, {'message_id': panel_id, 'owners': owners, 'neutral': neutral})
                     print(f'[POINTS] Глубокий скан: {len(owners)} точек')
                 changed = []
                 for page in range(2):
@@ -3773,6 +3781,8 @@ async def points_panel_monitor() -> None:
                 if capped:
                     for p, fam in capped:
                         changed.append((p, None, fam))
+                        if p not in neutral:
+                            neutral[p] = {'lostAt': datetime.now(timezone.utc).isoformat(), 'alerted': False}
                 fam_histories = {}
                 if owners:
                     owners_by_name = {}
@@ -3805,9 +3815,9 @@ async def points_panel_monitor() -> None:
                             pass
                     if unknown:
                         print(f'[POINTS] Не найдены ID для семей: {unknown}')
-                embed = build_points_panel_embed(owners, fam_histories)
+                embed = build_points_panel_embed(owners, fam_histories, neutral)
             if changed:
-                write_json(WAR_POINTS_STATE_FILE, {'message_id': panel_id, 'owners': owners})
+                write_json(WAR_POINTS_STATE_FILE, {'message_id': panel_id, 'owners': owners, 'neutral': neutral})
             alert_channel = bot.get_channel(WAR_POINTS_CHANNEL_ID)
             if not isinstance(alert_channel, discord.TextChannel):
                 try:
@@ -3818,11 +3828,15 @@ async def points_panel_monitor() -> None:
                 for point, winner, prev_owner in changed:
                     if not winner:
                         if prev_owner:
-                            try:
-                                await alert_channel.send(f'♻️ Точка **{point}** сброшена в нейтрал (семья **{prev_owner}** имела максимум)')
-                                print(f'[POINTS] Сброс: {point} из {prev_owner} (макс)')
-                            except Exception as exc:
-                                print(f'[POINTS] Ошибка отправки алерта: {exc}')
+                            n_info = neutral.get(point) or {}
+                            if not n_info.get('alerted'):
+                                try:
+                                    await alert_channel.send(f'♻️ Точка **{point}** без владельца (семья **{prev_owner}** имела максимум)')
+                                    print(f'[POINTS] Сброс: {point} из {prev_owner} (макс)')
+                                except Exception as exc:
+                                    print(f'[POINTS] Ошибка отправки алерта: {exc}')
+                                if point in neutral:
+                                    neutral[point]['alerted'] = True
                         continue
                     if _war_points_is_our_family(winner):
                         continue
@@ -3859,7 +3873,7 @@ async def points_panel_monitor() -> None:
                         if message is None:
                             message = msg
                             panel_id = msg.id
-                            write_json(WAR_POINTS_STATE_FILE, {'message_id': msg.id, 'owners': owners})
+                            write_json(WAR_POINTS_STATE_FILE, {'message_id': msg.id, 'owners': owners, 'neutral': neutral})
                             print(f'[POINTS] Найдена существующая панель: {msg.id}')
                         else:
                             duplicates.append(msg)
@@ -3873,7 +3887,7 @@ async def points_panel_monitor() -> None:
                 await message.edit(embed=embed)
             else:
                 message = await channel.send(embed=embed)
-                write_json(WAR_POINTS_STATE_FILE, {'message_id': message.id, 'owners': owners})
+                write_json(WAR_POINTS_STATE_FILE, {'message_id': message.id, 'owners': owners, 'neutral': neutral})
                 panel_id = message.id
                 print(f'[POINTS] Панель создана: {message.id}')
         except Exception as exc:
@@ -4233,6 +4247,28 @@ async def war_test_stats_cmd(interaction: discord.Interaction) -> None:
         await interaction.followup.send('✅ Тестовая статистика отправлена.', ephemeral=True)
     except Exception as exc:
         await interaction.followup.send(f'Ошибка: {exc}', ephemeral=True)
+
+
+@bot.tree.command(name='claim_point', description='Захватить нейтральную точку для C E N T')
+@discord.app_commands.describe(point_name='Название точки')
+async def claim_point_cmd(interaction: discord.Interaction, point_name: str) -> None:
+    if not isinstance(interaction.user, discord.Member) or not any(role.id in VZP_ADMIN_ROLE_IDS for role in interaction.user.roles):
+        await interaction.response.send_message('У тебя нет прав.', ephemeral=True)
+        return
+    state = read_json(WAR_POINTS_STATE_FILE) or {}
+    owners = state.get('owners') or {p: {'owner': o} for p, o in WAR_POINTS_SEED.items()}
+    neutral = state.get('neutral') or {}
+    point_name = point_name.strip()
+    if point_name not in neutral:
+        await interaction.response.send_message(f'Точка **{point_name}** не найдена среди нейтральных.', ephemeral=True)
+        return
+    owners[point_name] = {'owner': WAR_ORG_NAME, 'endedAt': '', 'eventId': f'claim_{int(time.time())}'}
+    del neutral[point_name]
+    state['owners'] = owners
+    state['neutral'] = neutral
+    write_json(WAR_POINTS_STATE_FILE, state)
+    await interaction.response.send_message(f'✅ Точка **{point_name}** закреплена за **{WAR_ORG_NAME}**.', ephemeral=True)
+    print(f'[POINTS] Захвачена точка: {point_name} -> {WAR_ORG_NAME}')
 
 
 

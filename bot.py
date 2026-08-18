@@ -175,6 +175,7 @@ WAR_POINTS_SEED = {
     "Свалка Rogers": "A M O R A L", "Heroin Chic": "A M O R A L",
     "Larry's Pork": "A M O R A L", "Locksmith": "A M O R A L",
     "ATOMIC": "A M O R A L", "Склад FRIDGIT": "A M O R A L", "Chico's": "A M O R A L",
+    "Склад LS Post": "Psychodelic",
 }
 
 NVIDIA_API_KEY = os.getenv('NVIDIA_API_KEY')

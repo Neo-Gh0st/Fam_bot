@@ -171,7 +171,7 @@ WAR_POINTS_SEED = {
     "Stoner Cement": "Psychodelic", "Pala Springs": "Psychodelic",
     "Willie's": "Psychodelic", "Станция дайверов": "Psychodelic",
     "Станция RON": "Psychodelic", "Зернохранилище": "Psychodelic",
-    "Верфь": "A M O R A L", "Пристань 60": "A M O R A L", "Пристань 57": "A M O R A L",
+    "Верфь": "A M O R A L", "Пристань 60": "C E N T", "Пристань 57": "A M O R A L",
     "Свалка Rogers": "A M O R A L", "Heroin Chic": "A M O R A L",
     "Larry's Pork": "A M O R A L", "Locksmith": "A M O R A L",
     "ATOMIC": "A M O R A L", "Склад FRIDGIT": "SANTANA", "Chico's": "ATF",

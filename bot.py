@@ -139,8 +139,8 @@ WAR_POINTS_SCAN_MAX_PAGES = int(os.getenv('WAR_POINTS_SCAN_MAX_PAGES', '20'))
 WAR_POINTS_SCAN_STOP_EMPTY = int(os.getenv('WAR_POINTS_SCAN_STOP_EMPTY', '3'))
 WAR_POINTS_DEEP_RESCAN_SECONDS = int(os.getenv('WAR_POINTS_DEEP_RESCAN_SECONDS', '3600'))
 WAR_POINTS_SEED = {
-    "Доки": "ATF", "MissT": "ATF", "Arirang Plaza": "ATF", "LS Gas Company": "ATF",
-    "Склад Cypress": "ATF", "Рынок Текстайл-сити": "ATF", "Horny's": "ATF",
+    "Доки": "A M O R A L", "MissT": "ATF", "Arirang Plaza": "ATF", "LS Gas Company": "ATF",
+    "Склад Cypress": "ATF",     "Рынок Текстайл-сити": "ATF", "Horny's": "ATF",
     "Стройка Alta": "ATF", "Whirligig": "ATF", "Richman Hotel": "ATF",
     "Pitchers": "ATF", "Конюшни": "ATF", "Обсерватория": "ATF", "Motor Motel": "ATF",
     "Старый аэропорт": "ATF", "Liquor Ace": "ATF", "Rex's Dinner": "ATF",
@@ -154,7 +154,7 @@ WAR_POINTS_SEED = {
     "Подстанция": "BEIFONG", "Hen House": "BEIFONG", "Магазин снастей": "BEIFONG",
     "Склад US Post": "SANTANA", "COVGARI": "SANTANA", "Ломбард Strawberry": "SANTANA",
     "Склад Саут-Шэмблс": "SANTANA", "Cart-L": "SANTANA", "BM Вайнвуд": "SANTANA",
-    "KORTZ": "SANTANA", "Belinda May's": "SANTANA", "Радиовышка": "SANTANA",
+    "KORTZ": "SANTANA", "Belinda May's": "SANTANA",     "Радиовышка": "Psychodelic",
     "Otto's Autoparts": "SANTANA", "You Tool": "SANTANA", "Wonderama": "SANTANA",
     "Лесопильня": "SANTANA", "Highway One": "SANTANA", "Pipeline Inn": "SANTANA",
     "LTD Gasoline": "SANTANA", "Тренировочный комплекс": "SANTANA", "Теплицы": "SANTANA",
@@ -164,7 +164,7 @@ WAR_POINTS_SEED = {
     "Daily Globe": "8mile", "LS Customs": "8mile", "Гольфклуб": "8mile",
     "Амбар Хармони": "8mile", "Bayview Lodge": "8mile", "Ферма Грейпсид": "8mile",
     "Фуникулер": "8mile", "Центр досуга": "8mile",
-    "Склад Alpha Post": "Psychodelic", "Склад PostOP": "Psychodelic",
+    "Склад Alpha Post": "Psychodelic",     "Склад PostOP": "8mile",
     "Склад XERO GAS": "Psychodelic", "Кафе DUNE-O's": "Psychodelic",
     "Vitreous": "Psychodelic",     "Нефтехранилище": "Main",
     "Frey Baker": "Psychodelic", "White Water AC": "Psychodelic",
@@ -174,7 +174,7 @@ WAR_POINTS_SEED = {
     "Верфь": "A M O R A L", "Пристань 60": "A M O R A L", "Пристань 57": "A M O R A L",
     "Свалка Rogers": "A M O R A L", "Heroin Chic": "A M O R A L",
     "Larry's Pork": "A M O R A L", "Locksmith": "A M O R A L",
-    "ATOMIC": "A M O R A L", "Склад FRIDGIT": "A M O R A L", "Chico's": "A M O R A L",
+    "ATOMIC": "A M O R A L", "Склад FRIDGIT": "SANTANA", "Chico's": "ATF",
     "Склад LS Post": "Psychodelic",
 }
 

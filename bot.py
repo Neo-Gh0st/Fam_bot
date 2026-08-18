@@ -110,6 +110,7 @@ VZP_DEF_IMAGE_FILE = Path(__file__).parent / 'assets' / 'def.png'
 VZP_ATTACK_IMAGE_FILE = Path(__file__).parent / 'assets' / 'attack.png'
 VZP_REACT_BUTTON_ID = 'vzp_react'
 VZP_REMOVE_BUTTON_ID = 'vzp_remove'
+VZP_LEAVE_BUTTON_ID = 'vzp_leave'
 VZP_PING_ROLE_IDS = [int(x) for x in os.getenv('VZP_PING_ROLE_IDS', '1531246359712370819,1531246359712370818,1531246359712370811').split(',') if x]
 VZP_CREATOR_ROLE_ID = int(os.getenv('VZP_CREATOR_ROLE_ID', '1532160160330551478'))
 VZP_ADMIN_ROLE_IDS = [int(x) for x in os.getenv('VZP_ADMIN_ROLE_IDS', '1531246359729016972,1531246359729016969,1531246359729016967').split(',') if x]
@@ -122,6 +123,8 @@ WAR_CHANNEL_ID = int(os.getenv('WAR_CHANNEL_ID', '1531246363009089638'))
 WAR_STATS_CHANNEL_ID = int(os.getenv('WAR_STATS_CHANNEL_ID', '1531246363009089639'))
 WAR_POLL_SECONDS = int(os.getenv('WAR_POLL_SECONDS', '30'))
 WAR_ATTACK_CD_HOURS = int(os.getenv('WAR_ATTACK_CD_HOURS', '3'))
+WAR_ATTACK_NIGHT_HOUR = int(os.getenv('WAR_ATTACK_NIGHT_HOUR', '2'))
+WAR_ATTACK_RESUME_HOUR = int(os.getenv('WAR_ATTACK_RESUME_HOUR', '14'))
 WAR_STATE_FILE = Path(__file__).with_name('war-state.json')
 WAR_STATS_SENT_FILE = Path(__file__).with_name('war-stats-sent.json')
 WAR_STATS_FONT_FILE = Path(__file__).parent / 'assets' / 'DejaVuSans.ttf'
@@ -1451,6 +1454,34 @@ class VzpBannerView(discord.ui.View):
         except Exception as exc:
             await interaction.response.send_message(f'Ошибка: {exc}', ephemeral=True)
             print(f'[VZP REMOVE BUTTON ERROR] {exc}')
+
+    @discord.ui.button(label='✋ Убрать руку', style=discord.ButtonStyle.secondary, custom_id=VZP_LEAVE_BUTTON_ID)
+    async def leave_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        try:
+            message_id = interaction.message.id
+            state = read_vzp_state()
+            entry = state.get(str(message_id))
+            if entry is None:
+                entry = vzp_entry_from_message(interaction.message)
+                if entry is None:
+                    await interaction.response.send_message('Банер не найден.', ephemeral=True)
+                    return
+                state[str(message_id)] = entry
+            uid = str(interaction.user.id)
+            if uid not in entry.get('reacts', {}):
+                await interaction.response.send_message('Ты не в списке участников.', ephemeral=True)
+                return
+            del entry['reacts'][uid]
+            write_vzp_state(state)
+            embed = build_vzp_embed(entry, interaction.guild)
+            await interaction.response.edit_message(
+                embed=embed,
+                view=VzpBannerView(),
+                attachments=[discord.File(vzp_image_file(entry.get('type') or 'def'), filename=vzp_image_file(entry.get('type') or 'def').name)],
+            )
+        except Exception as exc:
+            await interaction.response.send_message(f'Ошибка: {exc}', ephemeral=True)
+            print(f'[VZP LEAVE BUTTON ERROR] {exc}')
 
 class FamilyBot(commands.Bot):
     def __init__(self) -> None:
@@ -4127,6 +4158,17 @@ async def war_stats_monitor() -> None:
                     if dt is not None:
                         cd_end = (dt + timedelta(hours=WAR_ATTACK_CD_HOURS)).strftime('%Y-%m-%dT%H:%M:%S')
                     cd_end_msk = _war_stats_msk_hm(cd_end) if cd_end else '—'
+                    if cd_end:
+                        try:
+                            cd_end_dt = datetime.fromisoformat(cd_end)
+                            if WAR_ATTACK_NIGHT_HOUR <= cd_end_dt.hour < WAR_ATTACK_RESUME_HOUR:
+                                state['cd_sent'].append(event_id)
+                                cd_sent_ids.add(event_id)
+                                changed = True
+                                print(f'[WARSTATS] Кд попал в ночь ({cd_end_msk}), пропуск: {event_id}')
+                                continue
+                        except Exception:
+                            pass
                     try:
                         await war_channel.send(f'⏰ Кд на атаку прошло!\nПротив: {opponent} · {point}\nКд закончился в {cd_end_msk} (МСК)')
                         print(f'[WARSTATS] Кд на атаку прошло: {event_id} ({opponent}) в {cd_end_msk}')

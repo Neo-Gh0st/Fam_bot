@@ -165,7 +165,7 @@ WAR_POINTS_SEED = {
     "Амбар Хармони": "8mile", "Bayview Lodge": "8mile", "Ферма Грейпсид": "8mile",
     "Фуникулер": "8mile", "Центр досуга": "8mile",
     "Склад Alpha Post": "Psychodelic",     "Склад PostOP": "8mile",
-    "Склад XERO GAS": "Psychodelic",     "Кафе DUNE-O's": "ATF",
+    "Склад XERO GAS": "Psychodelic",     "Кафе DUNE-O's": "8mile",
     "Vitreous": "Psychodelic",     "Нефтехранилище": "SANTANA",
     "Frey Baker": "Psychodelic", "White Water AC": "Psychodelic",
     "Stoner Cement": "Psychodelic", "Pala Springs": "Psychodelic",

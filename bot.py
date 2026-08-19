@@ -4249,9 +4249,9 @@ async def war_test_stats_cmd(interaction: discord.Interaction) -> None:
         await interaction.followup.send(f'Ошибка: {exc}', ephemeral=True)
 
 
-@bot.tree.command(name='claim_point', description='Захватить нейтральную точку для C E N T')
-@discord.app_commands.describe(point_name='Название точки')
-async def claim_point_cmd(interaction: discord.Interaction, point_name: str) -> None:
+@bot.tree.command(name='claim_point', description='Захватить нейтральную точку для семьи')
+@discord.app_commands.describe(point_name='Название точки', family='Семья (название)')
+async def claim_point_cmd(interaction: discord.Interaction, point_name: str, family: str) -> None:
     if not isinstance(interaction.user, discord.Member) or not any(role.id in VZP_ADMIN_ROLE_IDS for role in interaction.user.roles):
         await interaction.response.send_message('У тебя нет прав.', ephemeral=True)
         return
@@ -4259,16 +4259,17 @@ async def claim_point_cmd(interaction: discord.Interaction, point_name: str) -> 
     owners = state.get('owners') or {p: {'owner': o} for p, o in WAR_POINTS_SEED.items()}
     neutral = state.get('neutral') or {}
     point_name = point_name.strip()
+    family = family.strip()
     if point_name not in neutral:
         await interaction.response.send_message(f'Точка **{point_name}** не найдена среди нейтральных.', ephemeral=True)
         return
-    owners[point_name] = {'owner': WAR_ORG_NAME, 'endedAt': '', 'eventId': f'claim_{int(time.time())}'}
+    owners[point_name] = {'owner': family, 'endedAt': '', 'eventId': f'claim_{int(time.time())}'}
     del neutral[point_name]
     state['owners'] = owners
     state['neutral'] = neutral
     write_json(WAR_POINTS_STATE_FILE, state)
-    await interaction.response.send_message(f'✅ Точка **{point_name}** закреплена за **{WAR_ORG_NAME}**.', ephemeral=True)
-    print(f'[POINTS] Захвачена точка: {point_name} -> {WAR_ORG_NAME}')
+    await interaction.response.send_message(f'✅ Точка **{point_name}** закреплена за **{family}**.', ephemeral=True)
+    print(f'[POINTS] Захвачена точка: {point_name} -> {family}')
 
 
 

@@ -133,6 +133,7 @@ WAR_FAMILY_PANEL_FILE = Path(__file__).with_name('war-family-panel.json')
 WAR_FAMILIES = [(4, 'ATF'), (37, 'BEIFONG'), (19456, 'SANTANA'), (55686, '8mile'), (85, 'Psychodelic'), (372, 'Main'), (10701, 'Scammers'), (123853, 'A M O R A L'), (112217, 'Clan Soprano'), (147788, 'MODERN')]
 WAR_POINTS_CHANNEL_ID = int(os.getenv('WAR_POINTS_CHANNEL_ID', '1538679810094538914'))
 WAR_POINTS_STATE_FILE = Path(__file__).with_name('war-points-state.json')
+WAR_POINTS_BASELINE_FILE = Path(__file__).with_name('points-baseline.json')
 WAR_POINTS_PANEL_TITLE = '📌 Война за точки'
 WAR_POINTS_MAX_PER_FAMILY = 20
 WAR_POINTS_DEEP_RESCAN_SECONDS = int(os.getenv('WAR_POINTS_DEEP_RESCAN_SECONDS', '3600'))
@@ -3668,6 +3669,20 @@ async def _war_points_rebuild(session, base: str, prev_owners: dict | None = Non
         if held > WAR_POINTS_MAX_PER_FAMILY:
             del owners[point]
             neutral[point] = {'lostAt': ended, 'lastEnded': ended, 'alerted': True}
+    baseline = read_json(WAR_POINTS_BASELINE_FILE)
+    if isinstance(baseline, dict) and baseline.get('owners'):
+        # ручная база «у кого какие точки»: держится, пока в API не появится
+        # событие захвата новее момента синка базы
+        sync_iso = str(baseline.get('syncedAt') or '')[:19]
+        for p, fam in baseline['owners'].items():
+            if sync_iso and p in owners and str(owners[p].get('endedAt') or '')[:19] > sync_iso:
+                continue  # после синка базы точку уже перехватили — событие новее
+            owners[p] = {'owner': _war_points_normalize(fam), 'endedAt': sync_iso, 'eventId': 'baseline'}
+            neutral.pop(p, None)
+        for p in baseline.get('neutral') or []:
+            owners.pop(p, None)
+            if p not in neutral:
+                neutral[p] = {'lostAt': sync_iso, 'lastEnded': sync_iso, 'alerted': True}
     if prev_owners:
         # ручные захваты через /claim_point держимся, пока в API не появится более новое событие
         for p, info in prev_owners.items():
@@ -3675,7 +3690,8 @@ async def _war_points_rebuild(session, base: str, prev_owners: dict | None = Non
             ts = eid.split('_')[-1]
             if not eid.startswith('claim_') or not ts.isdigit():
                 continue
-            if p in owners and str(owners[p].get('endedAt') or '')[:19] > datetime.fromtimestamp(int(ts), timezone.utc).strftime('%Y-%m-%dT%H:%M:%S'):
+            claim_iso = datetime.fromtimestamp(int(ts), timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')
+            if p in owners and str(owners[p].get('endedAt') or '')[:19] > claim_iso:
                 continue
             owners[p] = {'owner': _war_points_normalize(info.get('owner')), 'endedAt': '', 'eventId': eid}
             neutral.pop(p, None)

@@ -3604,7 +3604,8 @@ async def _war_points_fetch_page(session, base: str, offset: int) -> list:
 
 def _war_points_update_owners(owners: dict, events: list, neutral: dict | None = None) -> list:
     changed = []
-    now_iso = datetime.now(timezone.utc).isoformat()
+    # время в API — МСК с неверно приписанным Z, сравниваем в тех же часах
+    now_iso = _war_now_msk().isoformat()
     for e in events or []:
         if e.get('serverId') != WAR_SERVER_ID:
             continue
@@ -3673,7 +3674,8 @@ async def _war_points_rebuild(session, base: str, prev_owners: dict | None = Non
     baseline = read_json(WAR_POINTS_BASELINE_FILE)
     if isinstance(baseline, dict) and baseline.get('owners'):
         # ручная база «у кого какие точки»: держится, пока в API не появится
-        # событие захвата новее момента синка базы
+        # событие захвата новее момента синка базы.
+        # ВАЖНО: syncedAt пишется в часах API (МСК), как и endedAt событий
         sync_iso = str(baseline.get('syncedAt') or '')[:19]
         for p, fam in baseline['owners'].items():
             if sync_iso and p in owners and str(owners[p].get('endedAt') or '')[:19] > sync_iso:
@@ -3691,7 +3693,8 @@ async def _war_points_rebuild(session, base: str, prev_owners: dict | None = Non
             ts = eid.split('_')[-1]
             if not eid.startswith('claim_') or not ts.isdigit():
                 continue
-            claim_iso = datetime.fromtimestamp(int(ts), timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')
+            # клейм пишем в часах API (МСК), чтобы корректно сравнивать с endedAt
+            claim_iso = (datetime.fromtimestamp(int(ts), timezone.utc) + timedelta(hours=3)).strftime('%Y-%m-%dT%H:%M:%S')
             if p in owners and str(owners[p].get('endedAt') or '')[:19] > claim_iso:
                 continue
             owners[p] = {'owner': _war_points_normalize(info.get('owner')), 'endedAt': '', 'eventId': eid}

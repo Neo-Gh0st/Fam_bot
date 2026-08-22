@@ -3805,6 +3805,7 @@ async def points_panel_monitor() -> None:
     panel_id = state.get('message_id')
     owners = state.get('owners') or {}
     neutral = state.get('neutral') or {}
+    ongoing_alerted = state.get('ongoingAlerted') or {}
     # первая реконструкция — сразу на старте, дальше раз в WAR_POINTS_DEEP_RESCAN_SECONDS
     deep_scan_start = time.monotonic() - WAR_POINTS_DEEP_RESCAN_SECONDS - 1
     first_run = True
@@ -3824,7 +3825,7 @@ async def points_panel_monitor() -> None:
 
     def save_state() -> None:
         nonlocal last_write_mtime
-        write_json(WAR_POINTS_STATE_FILE, {'message_id': panel_id, 'owners': owners, 'neutral': neutral})
+        write_json(WAR_POINTS_STATE_FILE, {'message_id': panel_id, 'owners': owners, 'neutral': neutral, 'ongoingAlerted': ongoing_alerted})
         last_write_mtime = state_file_mtime()
 
     while True:
@@ -3838,6 +3839,7 @@ async def points_panel_monitor() -> None:
                     panel_id = file_state.get('message_id') or panel_id
                     owners = file_state.get('owners') or owners
                     neutral = file_state.get('neutral') or {}
+                    ongoing_alerted = file_state.get('ongoingAlerted') or ongoing_alerted
                     print('[POINTS] Состояние перечитано из файла (внешнее изменение)')
                 last_write_mtime = state_file_mtime()
             async with aiohttp.ClientSession(headers=headers) as session:
@@ -3848,10 +3850,12 @@ async def points_panel_monitor() -> None:
                     save_state()
                     print(f'[POINTS] Полная реконструкция: {len(owners)} занято, {len(neutral)} нейтрал')
                 changed = []
+                raw_events = []
                 for page in range(2):
                     events = await _war_points_fetch_page(session, base, page * 100)
                     if not events:
                         break
+                    raw_events += events
                     changed += _war_points_update_owners(owners, events, neutral)
                     await asyncio.sleep(0.3)
                 capped = _war_points_cap_at_limit(owners)
@@ -3867,6 +3871,34 @@ async def points_panel_monitor() -> None:
                                 rec['lastEnded'] = ended
                                 rec['alerted'] = False
                             rec.setdefault('lostAt', now_utc)
+                # раннее предупреждение: семья с максимумом точек атакует — если победит,
+                # точка упадёт в нейтрал; API видит идущий бой с самого начала войны
+                held_counts: dict[str, int] = {}
+                for info in owners.values():
+                    owner = _war_points_normalize(info.get('owner'))
+                    if owner:
+                        held_counts[owner] = held_counts.get(owner, 0) + 1
+                cutoff = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+                ongoing_alerted = {k: v for k, v in ongoing_alerted.items() if str(v) >= cutoff}
+                ongoing_attacks = []
+                if not first_run:
+                    for e in raw_events:
+                        eid = e.get('eventId') or ''
+                        attacker = _war_points_normalize(e.get('attackerName'))
+                        point_name = e.get('pointName') or ''
+                        if not eid or not attacker or e.get('endedAt') or e.get('winnerName'):
+                            continue
+                        if e.get('serverId') != WAR_SERVER_ID:
+                            continue
+                        if held_counts.get(attacker, 0) < WAR_POINTS_MAX_PER_FAMILY:
+                            continue
+                        if point_name not in owners:
+                            continue  # точка и так нейтральная — бой за неё ничего не меняет
+                        if eid in ongoing_alerted:
+                            continue
+                        ongoing_alerted[eid] = e.get('startedAt') or ''
+                        defender = _war_points_normalize(owners.get(point_name, {}).get('owner'))
+                        ongoing_attacks.append((attacker, point_name, defender))
                 # истории семей нужны только для кд на панели — тянем их не чаще раза в минуту
                 if now - hist_refresh_at >= WAR_POINTS_CD_REFRESH_SECONDS:
                     fam_histories = {}
@@ -3950,8 +3982,20 @@ async def points_panel_monitor() -> None:
                                 print(f'[POINTS] Захват: {winner} -> {point} (у {defender})')
                             except Exception as exc:
                                 print(f'[POINTS] Ошибка отправки алерта: {exc}')
+                    for attacker, point_name, defender in ongoing_attacks:
+                        text = f'⚠️ **{attacker}** (уже максимум точек) атакует **{point_name}** у **{defender}** — если победят, точка упадёт в нейтрал!'
+                        if tags:
+                            text += f'\n{tags}'
+                        try:
+                            await alert_channel.send(text)
+                            alerts_sent += 1
+                            print(f'[POINTS] Атака семьи с максимумом: {attacker} -> {point_name}')
+                        except Exception as exc:
+                            print(f'[POINTS] Ошибка отправки алерта: {exc}')
                 if alerts_sent or first_run:
                     await _war_points_cleanup_alerts(alert_channel)
+            if ongoing_attacks:
+                save_state()
             first_run = False
 
             channel = bot.get_channel(WAR_POINTS_CHANNEL_ID)

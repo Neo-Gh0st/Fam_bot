@@ -121,7 +121,7 @@ WAR_ORG_ID = int(os.getenv('WAR_ORG_ID', '149377'))
 WAR_SERVER_ID = int(os.getenv('WAR_SERVER_ID', '1'))
 WAR_CHANNEL_ID = int(os.getenv('WAR_CHANNEL_ID', '1531246363009089638'))
 WAR_STATS_CHANNEL_ID = int(os.getenv('WAR_STATS_CHANNEL_ID', '1531246363009089639'))
-WAR_POLL_SECONDS = int(os.getenv('WAR_POLL_SECONDS', '30'))
+WAR_POLL_SECONDS = int(os.getenv('WAR_POLL_SECONDS', '5'))
 WAR_ATTACK_CD_HOURS = int(os.getenv('WAR_ATTACK_CD_HOURS', '3'))
 WAR_ATTACK_NIGHT_HOUR = int(os.getenv('WAR_ATTACK_NIGHT_HOUR', '2'))
 WAR_ATTACK_RESUME_HOUR = int(os.getenv('WAR_ATTACK_RESUME_HOUR', '14'))
@@ -138,6 +138,7 @@ WAR_POINTS_PANEL_TITLE = '📌 Война за точки'
 WAR_POINTS_MAX_PER_FAMILY = 20
 WAR_POINTS_DEEP_RESCAN_SECONDS = int(os.getenv('WAR_POINTS_DEEP_RESCAN_SECONDS', '3600'))
 WAR_POINTS_REBUILD_MAX_PAGES = int(os.getenv('WAR_POINTS_REBUILD_MAX_PAGES', '60'))
+WAR_POINTS_CD_REFRESH_SECONDS = int(os.getenv('WAR_POINTS_CD_REFRESH_SECONDS', '60'))
 WAR_POINTS_PING_ROLE_IDS = [int(x) for x in os.getenv('WAR_POINTS_PING_ROLE_IDS', os.getenv('VZP_PING_ROLE_IDS', '1531246359712370819,1531246359712370818,1531246359712370811')).split(',') if x]
 WAR_POINTS_ALERTS_KEEP = int(os.getenv('WAR_POINTS_ALERTS_KEEP', '10'))
 
@@ -3807,6 +3808,8 @@ async def points_panel_monitor() -> None:
     # первая реконструкция — сразу на старте, дальше раз в WAR_POINTS_DEEP_RESCAN_SECONDS
     deep_scan_start = time.monotonic() - WAR_POINTS_DEEP_RESCAN_SECONDS - 1
     first_run = True
+    fam_histories_cache: dict = {}
+    hist_refresh_at = 0.0
     last_write_mtime = 0.0
     try:
         last_write_mtime = WAR_POINTS_STATE_FILE.stat().st_mtime
@@ -3864,38 +3867,44 @@ async def points_panel_monitor() -> None:
                                 rec['lastEnded'] = ended
                                 rec['alerted'] = False
                             rec.setdefault('lostAt', now_utc)
-                fam_histories = {}
-                if owners:
-                    owners_by_name = {}
-                    for info in owners.values():
-                        owner = _war_points_normalize(info.get('owner'))
-                        if owner:
-                            owners_by_name[owner] = True
-                    name_to_id = {_war_points_normalize(name): fid for fid, name in WAR_FAMILIES}
-                    unknown = set(owners_by_name.keys()) - set(name_to_id.keys())
-                    if unknown:
-                        try:
-                            async with session.get(f'{base}/stats/organizations?server_id={WAR_SERVER_ID}', timeout=aiohttp.ClientTimeout(total=15)) as resp:
-                                if resp.status == 200:
-                                    for org in await resp.json():
-                                        oname = _war_points_normalize(org.get('name'))
-                                        if oname in unknown:
-                                            name_to_id[oname] = org.get('externalId')
-                                            unknown.discard(oname)
-                        except Exception:
-                            pass
-                    for name in owners_by_name:
-                        fid = name_to_id.get(name)
-                        if not fid:
-                            continue
-                        try:
-                            async with session.get(f'{base}/stats/organizations/{fid}/history', timeout=aiohttp.ClientTimeout(total=15)) as resp:
-                                if resp.status == 200:
-                                    fam_histories[name] = await resp.json()
-                        except Exception:
-                            pass
-                    if unknown:
-                        print(f'[POINTS] Не найдены ID для семей: {unknown}')
+                # истории семей нужны только для кд на панели — тянем их не чаще раза в минуту
+                if now - hist_refresh_at >= WAR_POINTS_CD_REFRESH_SECONDS:
+                    fam_histories = {}
+                    if owners:
+                        owners_by_name = {}
+                        for info in owners.values():
+                            owner = _war_points_normalize(info.get('owner'))
+                            if owner:
+                                owners_by_name[owner] = True
+                        name_to_id = {_war_points_normalize(name): fid for fid, name in WAR_FAMILIES}
+                        unknown = set(owners_by_name.keys()) - set(name_to_id.keys())
+                        if unknown:
+                            try:
+                                async with session.get(f'{base}/stats/organizations?server_id={WAR_SERVER_ID}', timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                                    if resp.status == 200:
+                                        for org in await resp.json():
+                                            oname = _war_points_normalize(org.get('name'))
+                                            if oname in unknown:
+                                                name_to_id[oname] = org.get('externalId')
+                                                unknown.discard(oname)
+                            except Exception:
+                                pass
+                        for name in owners_by_name:
+                            fid = name_to_id.get(name)
+                            if not fid:
+                                continue
+                            try:
+                                async with session.get(f'{base}/stats/organizations/{fid}/history', timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                                    if resp.status == 200:
+                                        fam_histories[name] = await resp.json()
+                            except Exception:
+                                pass
+                        if unknown:
+                            print(f'[POINTS] Не найдены ID для семей: {unknown}')
+                    fam_histories_cache = fam_histories
+                    hist_refresh_at = now
+                else:
+                    fam_histories = fam_histories_cache
                 embed = build_points_panel_embed(owners, fam_histories, neutral)
             if changed:
                 save_state()

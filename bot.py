@@ -135,50 +135,10 @@ WAR_POINTS_CHANNEL_ID = int(os.getenv('WAR_POINTS_CHANNEL_ID', '1538679810094538
 WAR_POINTS_STATE_FILE = Path(__file__).with_name('war-points-state.json')
 WAR_POINTS_PANEL_TITLE = '📌 Война за точки'
 WAR_POINTS_MAX_PER_FAMILY = 20
-WAR_POINTS_SCAN_MAX_PAGES = int(os.getenv('WAR_POINTS_SCAN_MAX_PAGES', '20'))
-WAR_POINTS_SCAN_STOP_EMPTY = int(os.getenv('WAR_POINTS_SCAN_STOP_EMPTY', '3'))
 WAR_POINTS_DEEP_RESCAN_SECONDS = int(os.getenv('WAR_POINTS_DEEP_RESCAN_SECONDS', '3600'))
+WAR_POINTS_REBUILD_MAX_PAGES = int(os.getenv('WAR_POINTS_REBUILD_MAX_PAGES', '60'))
 WAR_POINTS_PING_ROLE_IDS = [int(x) for x in os.getenv('WAR_POINTS_PING_ROLE_IDS', os.getenv('VZP_PING_ROLE_IDS', '1531246359712370819,1531246359712370818,1531246359712370811')).split(',') if x]
 WAR_POINTS_ALERTS_KEEP = int(os.getenv('WAR_POINTS_ALERTS_KEEP', '10'))
-WAR_POINTS_SEED = {
-    "Доки": "A M O R A L", "MissT": "ATF", "Arirang Plaza": "ATF", "LS Gas Company": "ATF",
-    "Склад Cypress": "ATF",     "Рынок Текстайл-сити": "ATF", "Horny's": "ATF",
-    "Стройка Alta": "ATF", "Whirligig": "ATF", "Richman Hotel": "ATF",
-    "Pitchers": "ATF", "Конюшни": "ATF", "Обсерватория": "ATF", "Motor Motel": "ATF",
-    "Старый аэропорт": "ATF", "Liquor Ace": "ATF", "Rex's Dinner": "ATF",
-    "Up-n-Atom": "ATF", "Рыбацкая хижина": "ATF", "Частное депо": "ATF",
-    "The Sundae Post": "BEIFONG", "Del Perro Plaza": "BEIFONG",
-    "Склад Bristols": "BEIFONG", "KRONOS": "BEIFONG", "Pacific Bluffs": "BEIFONG",
-    "Chumash Plaza": "BEIFONG", "Bishop's Chicken": "BEIFONG", "CHAPS": "BEIFONG",
-    "Ветряная ферма": "BEIFONG", "Старая ферма": "BEIFONG", "Paint Shop": "BEIFONG",
-    "Каменоломня": "BEIFONG", "Eastern Motel": "BEIFONG", "Tractor Workshop": "BEIFONG",
-    "Dollar Pill": "BEIFONG", "Карьер": "BEIFONG", "Спутниковая станция": "BEIFONG",
-    "Подстанция": "BEIFONG", "Hen House": "BEIFONG", "Магазин снастей": "BEIFONG",
-    "Склад US Post": "SANTANA", "COVGARI": "SANTANA",     "Ломбард Strawberry": "A M O R A L",
-    "Склад Саут-Шэмблс": "SANTANA", "Cart-L": "SANTANA",     "BM Вайнвуд": "MODERN",
-    "KORTZ": "SANTANA", "Belinda May's": "SANTANA",     "Радиовышка": "Psychodelic",
-    "Otto's Autoparts": "SANTANA", "You Tool": "SANTANA", "Wonderama": "SANTANA",
-    "Лесопильня": "SANTANA", "Highway One": "SANTANA", "Pipeline Inn": "SANTANA",
-    "LTD Gasoline": "SANTANA", "Тренировочный комплекс": "SANTANA", "Теплицы": "SANTANA",
-    "Склад JETSAM": "8mile", "BM Веспуччи": "Psychodelic", "Ресторан KOI": "8mile",
-    "Ломбард Vinewood": "Psychodelic", "Korean Plaza": "8mile", "BANNER H&S": "8mile",
-    "BEACON": "8mile", "Сталелитейный завод": "8mile", "THORNS": "8mile",
-    "Daily Globe": "8mile", "LS Customs": "8mile", "Гольфклуб": "8mile",
-    "Амбар Хармони": "8mile", "Bayview Lodge": "8mile", "Ферма Грейпсид": "8mile",
-    "Фуникулер": "8mile", "Центр досуга": "8mile",
-    "Склад Alpha Post": "Psychodelic",     "Склад PostOP": "8mile",
-    "Склад XERO GAS": "Psychodelic",     "Кафе DUNE-O's": "8mile",
-    "Vitreous": "Psychodelic",     "Нефтехранилище": "SANTANA",
-    "Frey Baker": "Psychodelic", "White Water AC": "Psychodelic",
-    "Stoner Cement": "Psychodelic", "Pala Springs": "Psychodelic",
-    "Willie's": "Psychodelic", "Станция дайверов": "Psychodelic",
-    "Станция RON": "Psychodelic", "Зернохранилище": "Psychodelic",
-    "Верфь": "A M O R A L", "Пристань 60": "A M O R A L", "Пристань 57": "A M O R A L",
-    "Свалка Rogers": "Psychodelic", "Heroin Chic": "A M O R A L",
-    "Larry's Pork": "A M O R A L", "Locksmith": "A M O R A L",
-    "ATOMIC": "A M O R A L", "Склад FRIDGIT": "SANTANA", "Chico's": "ATF",
-    "Склад LS Post": "Psychodelic",
-}
 
 NVIDIA_API_KEY = os.getenv('NVIDIA_API_KEY')
 NVIDIA_API_URL = 'https://integrate.api.nvidia.com/v1/chat/completions'
@@ -3677,27 +3637,49 @@ def _war_points_update_owners(owners: dict, events: list, neutral: dict | None =
     return changed
 
 
-async def _war_points_deep_scan(session, base: str, existing_owners: dict | None = None, neutral: dict | None = None) -> dict:
-    if existing_owners:
-        owners = dict(existing_owners)
-    else:
-        owners = {p: {'owner': o} for p, o in WAR_POINTS_SEED.items()}
-    empty_pages = 0
-    for page in range(WAR_POINTS_SCAN_MAX_PAGES):
-        events = await _war_points_fetch_page(session, base, page * 100)
-        if not events:
+async def _war_points_rebuild(session, base: str, prev_owners: dict | None = None) -> tuple[dict, dict]:
+    """Полная реконструкция владения точками из всей истории событий API.
+
+    События прогоняются хронологически: последний победитель = владелец точки.
+    Если у семьи уже был максимум точек, свежезахваченная падает в нейтрал —
+    как в игре. Опираемся только на события API: ручной сид не используется,
+    чтобы не тянуть устаревших владельцев.
+    """
+    raw = []
+    for page in range(WAR_POINTS_REBUILD_MAX_PAGES):
+        batch = await _war_points_fetch_page(session, base, page * 100)
+        if not batch:
             break
-        before = len(owners)
-        _war_points_update_owners(owners, events, neutral)
-        new_points = len(owners) > before
-        if not new_points:
-            empty_pages += 1
-            if empty_pages >= WAR_POINTS_SCAN_STOP_EMPTY:
-                break
-        else:
-            empty_pages = 0
-        await asyncio.sleep(0.4)
-    return owners
+        raw += batch
+        await asyncio.sleep(0.3)
+    events = [e for e in raw if e.get('endedAt') and e.get('pointName') and e.get('winnerName')]
+    events.sort(key=lambda e: e['endedAt'])
+    owners: dict = {}
+    neutral: dict = {}
+    for e in events:
+        if e.get('serverId') != WAR_SERVER_ID:
+            continue
+        point = e['pointName']
+        winner = _war_points_normalize(e['winnerName'])
+        ended = e['endedAt']
+        owners[point] = {'owner': winner, 'endedAt': ended, 'eventId': e.get('eventId')}
+        neutral.pop(point, None)
+        held = sum(1 for info in owners.values() if info['owner'] == winner)
+        if held > WAR_POINTS_MAX_PER_FAMILY:
+            del owners[point]
+            neutral[point] = {'lostAt': ended, 'lastEnded': ended, 'alerted': True}
+    if prev_owners:
+        # ручные захваты через /claim_point держимся, пока в API не появится более новое событие
+        for p, info in prev_owners.items():
+            eid = str((info or {}).get('eventId') or '')
+            ts = eid.split('_')[-1]
+            if not eid.startswith('claim_') or not ts.isdigit():
+                continue
+            if p in owners and str(owners[p].get('endedAt') or '')[:19] > datetime.fromtimestamp(int(ts), timezone.utc).strftime('%Y-%m-%dT%H:%M:%S'):
+                continue
+            owners[p] = {'owner': _war_points_normalize(info.get('owner')), 'endedAt': '', 'eventId': eid}
+            neutral.pop(p, None)
+    return owners, neutral
 
 
 def _war_points_cap_at_limit(owners: dict) -> list:
@@ -3804,9 +3786,10 @@ async def points_panel_monitor() -> None:
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Accept': 'application/json'}
     state = read_json(WAR_POINTS_STATE_FILE) or {}
     panel_id = state.get('message_id')
-    owners = state.get('owners') or {p: {'owner': o} for p, o in WAR_POINTS_SEED.items()}
+    owners = state.get('owners') or {}
     neutral = state.get('neutral') or {}
-    deep_scan_start = time.monotonic()
+    # первая реконструкция — сразу на старте, дальше раз в WAR_POINTS_DEEP_RESCAN_SECONDS
+    deep_scan_start = time.monotonic() - WAR_POINTS_DEEP_RESCAN_SECONDS - 1
     first_run = True
     last_write_mtime = 0.0
     try:
@@ -3840,10 +3823,11 @@ async def points_panel_monitor() -> None:
                 last_write_mtime = state_file_mtime()
             async with aiohttp.ClientSession(headers=headers) as session:
                 if not owners or (now - deep_scan_start) >= WAR_POINTS_DEEP_RESCAN_SECONDS:
-                    owners = await _war_points_deep_scan(session, base, existing_owners=owners, neutral=neutral)
+                    prev_owners = owners
+                    owners, neutral = await _war_points_rebuild(session, base, prev_owners=prev_owners)
                     deep_scan_start = now
                     save_state()
-                    print(f'[POINTS] Глубокий скан: {len(owners)} точек')
+                    print(f'[POINTS] Полная реконструкция: {len(owners)} занято, {len(neutral)} нейтрал')
                 changed = []
                 for page in range(2):
                     events = await _war_points_fetch_page(session, base, page * 100)
@@ -4351,7 +4335,7 @@ async def claim_point_cmd(interaction: discord.Interaction, point_name: str, fam
         await interaction.response.send_message('У тебя нет прав.', ephemeral=True)
         return
     state = read_json(WAR_POINTS_STATE_FILE) or {}
-    owners = state.get('owners') or {p: {'owner': o} for p, o in WAR_POINTS_SEED.items()}
+    owners = state.get('owners') or {}
     neutral = state.get('neutral') or {}
     point_name = point_name.strip()
     family = family.strip()
@@ -4379,8 +4363,8 @@ async def war_test_points_panel_cmd(interaction: discord.Interaction) -> None:
         base = WAR_API_URL.rsplit('/', 1)[0]
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Accept': 'application/json'}
         async with aiohttp.ClientSession(headers=headers) as session:
-            owners = await _war_points_deep_scan(session, base)
-        embed = build_points_panel_embed(owners)
+            owners, neutral = await _war_points_rebuild(session, base)
+        embed = build_points_panel_embed(owners, None, neutral)
         channel = bot.get_channel(WAR_POINTS_CHANNEL_ID)
         if channel is None:
             channel = await bot.fetch_channel(WAR_POINTS_CHANNEL_ID)
